@@ -2,7 +2,7 @@
 
 A real fruit-fly connectome, running on a laptop CPU, plugged into Pokémon Red.
 
-![The MaleCNS v1.0 connectome and its activity under stimulation](media/connectome_summary.png)
+![The fly connectome driving Pokémon Red: the fly on a gamepad, the game, and the connectome's activity](media/journey.gif)
 
 The brain is real: [MaleCNS v1.0](https://male-cns.janelia.org), 166,700
 neurons and ~25.6 million connections, wired as electron microscopy found them,
@@ -96,6 +96,8 @@ controller. A shuffled-label control sits at chance, so the number is not an
 artefact of autocorrelated windows. A pixel-only encoder (`VisionEncoder`) reaches
 a similar side-AUC on held-out temporal blocks.
 
+![The connectome over 8 s: which neurons fire, the stimulus, and population rate by region](media/connectome_summary.png)
+
 **A frozen brain is not a policy.** Training the student on teacher
 demonstrations, the student *appears* to work: it walks the recorded corridor all
 the way to Viridian. Move it anywhere new and it collapses -- into a wall in
@@ -134,7 +136,7 @@ render/
   record_journey.py       teacher journey -> render/recording.npz (--window SDL2 to watch)
   render_journey.py       recording -> media/viridian_final.mp4 (PIL piped to ffmpeg)
 play_live.py              connectome decides, PyBoy window
-media/                    generated figures and video (mp4 not committed)
+media/                    the top GIF, figures, and video (mp4 not committed)
 roms/                     your ROM and scene bookmarks (not committed)
 data/                     connectome files (not committed)
 ```
