@@ -5,7 +5,7 @@ layout. Everything downstream (encoders, rewards, the fly brain) talks to
 `PokemonAdapter` in plain Python.
 
 Addresses are for Pokémon Red (USA/Europe). They match the pret/pokered
-disassembly and the ROM's SHA1, both recorded in README.md. We read them
+disassembly and the ROM's SHA1, both recorded in README.md. I read them
 directly instead of asking PyBoy to load `pokered.sym`, which prints a warning
 per unsupported label.
 
@@ -241,7 +241,7 @@ class PokemonAdapter:
     def _navigate_intro(self) -> None:
         """Walk the opening to the bedroom, then make the player walkable.
 
-        The opening is a fixed script, so we mash A for a fixed number of rounds
+        The opening is a fixed script, so I mash A for a fixed number of rounds
         rather than stopping when `wCurMap` first reads REDS_HOUSE_2F: that value
         passes through the map id during the cinematics, long before the bedroom
         is real. Afterwards a text box is often still open (mashing A can also

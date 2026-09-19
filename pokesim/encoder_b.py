@@ -3,7 +3,7 @@
 Where the visual encoder (encoder A) sees only pixels, this reads the RAM truth
 -- the player's tile, every map object's on-screen position, HP, battle flags --
 and turns it into the same `FeatureDetectors` channels. It is the ceiling the
-visual encoder gets measured against, and the teacher we train it from.
+visual encoder gets measured against, and the teacher I train it from.
 
 The mapping mirrors sshfighter: an "opponent" at (dx, size) in screen pixels and
 a 0..1 threat level. Positions are egocentric and in pixels -- sprite screen X/Y

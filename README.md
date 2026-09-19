@@ -2,7 +2,9 @@
 
 A real fruit-fly connectome, running on a laptop CPU, plugged into Pokémon Red.
 
-**TL;DR.** The brain is real: [MaleCNS v1.0](https://male-cns.janelia.org), 166,700
+![The MaleCNS v1.0 connectome and its activity under stimulation](media/connectome_summary.png)
+
+The brain is real: [MaleCNS v1.0](https://male-cns.janelia.org), 166,700
 neurons and ~25.6 million connections, wired as electron microscopy found them,
 simulated as a leaky integrate-and-fire network with **frozen weights**. The game
 is real: Pokémon Red under [PyBoy](https://github.com/Baekalfen/PyBoy), driven
@@ -14,11 +16,11 @@ just as genuinely not a player.
 
 ---
 
-## 1. What we wanted to do
+## 1. What I wanted to do
 
 There is a genre of viral clip where a brain in a dish, or a connectome, or a
 neural culture, "plays" Doom, Minecraft or Pokémon. Most of them are hard to
-audit. We wanted to build one in the open and answer three questions:
+audit. I wanted to build one in the open and answer three questions:
 
 1. Can you take the **whole adult fly central nervous system** and run it in a
    game loop on ordinary hardware?
@@ -27,7 +29,7 @@ audit. We wanted to build one in the open and answer three questions:
 
 ---
 
-## 2. What we actually built
+## 2. What I actually built
 
 The loop, once per 20 ms game frame:
 
@@ -73,16 +75,18 @@ the ROM and the Red RAM map. Everything above it talks in plain Python.
 * The game, the button presses and the **connectome activity are real**. The
   right-hand panel is one dot per neuron at its measured anatomical position,
   lighting up as it spikes, driven by the live screen.
-* The fly is a **stylised drawing**, not a biomechanical body. We deliberately
+* The fly is a **stylised drawing**, not a biomechanical body. I deliberately
   did not adopt NeuroMechFly/MuJoCo here; a rigid 3D body on CPU would be slow
   and would not change what the brain is doing.
 * The **navigation is the teacher**. The fly is not steering from Pallet to
   Viridian. The little leg on the gamepad is showing you which button the game
   receives, not a decision made by the connectome.
 
+![Three moments of the loop: the game, what the fly sees, the connectome and its spikes](media/pokemon_brain_still.png)
+
 ---
 
-## 4. What we measured
+## 4. What I measured
 
 **The connectome does carry the signal.** With the oracle offset (the true
 `dx` read from RAM) driving the visual projection neurons, a logistic readout on
@@ -111,7 +115,7 @@ exactly what the descending-neuron result shows.
 
 So the honest headline is: **you can put a real connectome in a game loop, and it
 will react like a fly, but it will not play the game.** Demos that look like
-cognition are, we suspect, mostly reflexes with a lot of scaffolding around them.
+cognition are, I suspect, mostly reflexes with a lot of scaffolding around them.
 
 ---
 
@@ -179,11 +183,11 @@ SHA1  ea9bcae617fdf159b045185467ae58b2e4a48b9a
 ```
 
 (The optional `reference/pokered/pokered.sym`, from that repo, lets you read
-state by symbol name; we read numeric RAM addresses instead.)
+state by symbol name; I read numeric RAM addresses instead.)
 
 ### 6.5 Scenes
 
-`roms/scenes/*.state` are PyBoy save states we bookmarked during experiments and
+`roms/scenes/*.state` are PyBoy save states I bookmarked during experiments and
 they are not committed. Any script can create one:
 
 ```sh
