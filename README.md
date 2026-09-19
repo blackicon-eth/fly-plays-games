@@ -58,23 +58,23 @@ screen pixels ─▶ visual projection neurons ─▶ the connectome ─▶ desc
 The game side is a single thin adapter (`pokesim/adapter.py`) that knows PyBoy,
 the ROM and the Red RAM map. Everything above it talks in plain Python.
 
-### The two "players"
+### Who does what
 
 * **Teacher** (`render/record_journey.py`). A planner that reads the game's RAM
   and walks: it builds a map from the live tilemap, learns which tiles are
-  walkable, searches the frontier toward the north, and flees wild battles. This
-  is what produced the video, and it really does reach Viridian City.
-* **Student** (`pokesim/vision.py`, `pokesim/compare.py`). A small CNN that sees
-  only pixels and tries to imitate the teacher's behaviour. This is where the
-  project gets interesting, because it does not work (see §4).
+  walkable, searches the frontier toward the north, and flees wild battles. It
+  presses the buttons in the video, and it really does reach Viridian City.
+* **The fly** (`play_live.py`, `pokesim/loop.py`). The connectome is genuinely in
+  the loop: it gets the screen, fires, and a readout on its descending neurons can
+  pick a button. It reacts; it does not navigate.
 
 ---
 
 ## 3. What is real in the video, and what is not
 
 * The game, the button presses and the **connectome activity are real**. The
-  right-hand panel is one dot per neuron at its measured anatomical position,
-  lighting up as it spikes, driven by the live screen.
+  right-hand panel is one dot per neuron, in a 2D projection of its measured
+  position, lighting up as it spikes, driven by the live screen.
 * The fly is a **stylised drawing**, not a biomechanical body. I deliberately
   did not adopt NeuroMechFly/MuJoCo here; a rigid 3D body on CPU would be slow
   and would not change what the brain is doing.
@@ -93,27 +93,17 @@ the ROM and the Red RAM map. Everything above it talks in plain Python.
 the descending-neuron trace recovers which side the object is on with a
 **cross-validated AUC of ~0.95**, and behavioural rollouts track an oracle
 controller. A shuffled-label control sits at chance, so the number is not an
-artefact of autocorrelated windows. A pixel-only encoder (`VisionEncoder`) reaches
-a similar side-AUC on held-out temporal blocks.
+artefact of autocorrelated windows.
 
 ![The connectome over 8 s: which neurons fire, the stimulus, and population rate by region](media/connectome_summary.png)
 
-**A frozen brain is not a policy.** Training the student on teacher
-demonstrations, the student *appears* to work: it walks the recorded corridor all
-the way to Viridian. Move it anywhere new and it collapses -- into a wall in
-Pallet, or into repeating one direction (its cross-validated per-frame accuracy
-is barely above the majority class). Adding memory (GRU) or DAgger did not fix
-it, and made the corridor result worse.
-
-**Why it fails is structural, not a tuning problem.** The teacher is a *global
-planner*: its action is a function of a map it has accumulated, not of the
-current frame. Imitation learning from a POMDP planner to a per-frame policy is
-mis-posed, and no amount of data helps. More fundamentally, the LIF connectome
-**has no long-term memory and no plasticity**: its weights never change, so it
-cannot learn the delayed-reward structure a game like Pokémon needs (a gym leader
-is many correct decisions away from any reward). What it *can* do is fast,
-hard-wired sensorimotor reflexes -- looming, escape, target tracking -- which is
-exactly what the descending-neuron result shows.
+**Why it reacts but does not play.** The LIF connectome **has no long-term memory
+and no plasticity**: its weights never change, so it cannot hold a map or learn
+the delayed-reward structure a game like Pokémon needs (a gym leader is many
+correct decisions away from any reward). What it *can* do is fast, hard-wired
+sensorimotor reflexes -- looming, escape, target tracking -- which is exactly what
+the descending-neuron result shows. That is why the long walk in the video is a
+scripted teacher and the fly is a passenger.
 
 So the honest headline is: **you can put a real connectome in a game loop, and it
 will react like a fly, but it will not play the game.** Demos that look like
@@ -127,10 +117,8 @@ cognition are, I suspect, mostly reflexes with a lot of scaffolding around them.
 pokesim/                  game <-> brain glue
   adapter.py              the only PyBoy / ROM / RAM module
   encoder_b.py            oracle encoder: exact game state -> visual channels
-  vision.py               pixel-only CNN encoder (the student)
-  encoding.py             datasets recorded from oracle + screen
-  compare.py              oracle vs vision, blocked CV + shuffled control
-  loop.py                 close the loop, run controllers, brain features
+  compare.py              connectome readout, blocked CV + shuffled control
+  loop.py                 rollout, oracle controller, descending-neuron features
 fly-ai/                   the flybrain package (upstream, MIT) -- clone it, see Setup
 render/
   record_journey.py       teacher journey -> render/recording.npz (--window SDL2 to watch)
@@ -245,15 +233,16 @@ The measurement code keeps to honest protocols:
 * **A fresh brain reset per sample** in `_features_per_sample`: frames are
   autocorrelated, so samples are made independent on purpose.
 
-Run the oracle-vs-vision comparison from a Python shell:
+Run the connectome readout from a Python shell:
 
 ```python
 import numpy as np, sys
 sys.path.insert(0, "."); sys.path.insert(0, "fly-ai")
 from flybrain import FlyBrain
-from pokesim import PokemonAdapter, Dataset
-# ... record a Dataset with pokesim.encoding.record(...) and pass it to
-# pokesim.compare.compare(brain, dataset, dx_from_vision)
+from pokesim import PokemonAdapter
+from pokesim.compare import compare_per_sample
+# ... collect dxs, side and blocks from a walk, then:
+# compare_per_sample(brain, dxs, side, blocks)
 ```
 
 ---

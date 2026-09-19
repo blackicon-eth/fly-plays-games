@@ -6,8 +6,6 @@ Python: screen frames in, buttons out, named state for free.
 """
 from .adapter import ADDR, BUTTONS, GameState, PokemonAdapter, load_symbols
 from .encoder_b import OracleEncoder, OracleTarget
-from .encoding import Dataset, record, sample_screen, walk_until
 
 __all__ = ["PokemonAdapter", "GameState", "OracleEncoder", "OracleTarget",
-           "Dataset", "record", "sample_screen", "walk_until",
            "ADDR", "BUTTONS", "load_symbols"]

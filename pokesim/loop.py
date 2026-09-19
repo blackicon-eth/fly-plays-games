@@ -1,11 +1,10 @@
-"""Close the loop: screen -> encoder A -> (dx, dy) -> button -> the world moves.
+"""Close the loop: the world -> the connectome -> a button -> the world moves.
 
-The behaviour is "walk toward the nearest map object", the embodied version of
-the side task. A controller turns a predicted offset into one of the four
-directions; a rollout presses it and reports, from the oracle (ground truth, not
-visible to the controller), how far the nearest object was after every step.
-Comparing the vision controller with the oracle controller and with a random
-walk is the measurement.
+The behaviour here is "walk toward the nearest map object". A controller turns an
+offset into one of the four directions; a rollout presses it and reports, from the
+oracle (ground truth, not visible to the controller), how far the nearest object
+was after every step. `brain_features` gives the connectome's own view: inject the
+offset into the visual channels, let it settle, and read the descending neurons.
 """
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ from flybrain.eyes import FeatureDetectors
 from flybrain.reservoir import Trace
 
 from .encoder_b import target as oracle_target
-from .encoding import sample_screen
 
 MOVE_FRAMES = 16
 SETTLE_FRAMES = 2
@@ -47,14 +45,6 @@ def rollout(adapter, controller, steps: int, move_frames: int = MOVE_FRAMES,
     return np.array(distances)
 
 
-def vision_controller(encoder, size: tuple[int, int] = (36, 40), dead_zone: float = DEAD_ZONE):
-    def controller(adapter):
-        frame = sample_screen(adapter, size)[None]
-        dx, dy = encoder.predict(frame)[0]
-        return button_toward(float(dx), float(dy), dead_zone)
-    return controller
-
-
 def oracle_controller(dead_zone: float = DEAD_ZONE):
     def controller(adapter):
         t = oracle_target(adapter)
@@ -74,9 +64,9 @@ def brain_features(brain, dxs: np.ndarray, steps: int = 8, size: float = 16.0,
                    tau: float = 0.1, seed: int = 0) -> np.ndarray:
     """Descending-neuron trace for each frame, with a fresh brain each time.
 
-    This is the connectome's view of an encoder output: inject the offset into the
-    visual channels, let it settle for `steps`, read the DNs. A readout on top of
-    this is the brain-driven decision.
+    This is the connectome's view of an offset: inject it into the visual
+    channels, let it settle for `steps`, read the DNs. A readout on top of this is
+    the brain-driven decision.
     """
     detectors = FeatureDetectors(brain)
     out = None
@@ -91,33 +81,6 @@ def brain_features(brain, dxs: np.ndarray, steps: int = 8, size: float = 16.0,
             out = np.zeros((len(dxs), f.shape[0]), np.float32)
         out[i] = f
     return out
-
-
-def readout_controller(encoder, brain, readout, size: tuple[int, int] = (36, 40),
-                       brain_steps: int = 8, obj_size: float = 16.0, dead_zone: float = 6.0):
-    """The button is chosen by a readout on the connectome's activity, not by the CNN."""
-    def controller(adapter):
-        frame = sample_screen(adapter, size)[None]
-        dx = float(encoder.predict(frame)[0, 0])
-        if abs(dx) < dead_zone:
-            return None
-        brain.reset(seed=0)
-        detectors = FeatureDetectors(brain)
-        trace = Trace(brain, types=["descending_neuron"], tau=0.1)
-        f = None
-        for _ in range(brain_steps):
-            f = trace.observe(brain.step(inject=detectors.inject(opp=(dx, obj_size), threat=0.0)))
-        return "right" if float(readout.predict(f)) >= 0.5 else "left"
-    return controller
-
-
-def cnn_controller(encoder, size: tuple[int, int] = (36, 40), dead_zone: float = 6.0):
-    def controller(adapter):
-        dx = float(encoder.predict(sample_screen(adapter, size)[None])[0, 0])
-        if abs(dx) < dead_zone:
-            return None
-        return "left" if dx < 0 else "right"
-    return controller
 
 
 def oracle_x_controller(dead_zone: float = 6.0):

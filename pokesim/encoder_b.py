@@ -1,16 +1,13 @@
 """The oracle encoder: drive the fly's visual channels from exact game state.
 
-Where the visual encoder (encoder A) sees only pixels, this reads the RAM truth
--- the player's tile, every map object's on-screen position, HP, battle flags --
-and turns it into the same `FeatureDetectors` channels. It is the ceiling the
-visual encoder gets measured against, and the teacher I train it from.
-
-The mapping mirrors sshfighter: an "opponent" at (dx, size) in screen pixels and
-a 0..1 threat level. Positions are egocentric and in pixels -- sprite screen X/Y
-from `wSpriteStateData1`, minus the player's -- because that is exactly what the
-retina would see. In the overworld the opponent is the nearest map object; in a
-battle it is the enemy Pokémon, which sits on the right with a size that tracks
-how much of it is left.
+This reads the RAM truth -- the player's tile, every map object's on-screen
+position, HP, battle flags -- and turns it into the same `FeatureDetectors`
+channels the visual front end expects: an "opponent" at (dx, size) in screen
+pixels and a 0..1 threat level. Positions are egocentric and in pixels -- sprite
+screen X/Y from `wSpriteStateData1`, minus the player's -- because that is exactly
+what the retina would see. In the overworld the opponent is the nearest map
+object; in a battle it is the enemy Pokémon, which sits on the right with a size
+that tracks how much of it is left.
 """
 from __future__ import annotations
 

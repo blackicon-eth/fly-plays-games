@@ -1,10 +1,9 @@
 # Runtime dependencies for pokesim and the scripts in render/.
 # flybrain itself (fly-ai/) needs numpy, scipy and numba only; these extras are
-# for the game, the vision encoder and the renderer.
+# for the game and the renderer.
 numpy>=2.0
 scipy>=1.13
 numba>=0.61
-torch>=2.2
 pyboy>=2.0
 matplotlib>=3.8
 pillow>=10
