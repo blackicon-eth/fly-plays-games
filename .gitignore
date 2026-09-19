@@ -1,0 +1,34 @@
+# Python / virtualenv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local ROMs and emulator data -- never commit
+roms/
+*.zip
+*.gb
+*.gbc
+*.gbx
+*.ram
+*.sav
+*.state
+
+# External reference material and third-party clones (not part of this project)
+reference/
+
+# Vendored upstream dependency (MIT) -- clone it, do not commit:
+#   git clone https://github.com/alextitonis/fly.ai fly-ai
+fly-ai/
+
+# Build artifacts
+build/
+*.o
+
+# Connectome cache (brain.npz, weights.npz)
+data/
+
+# Generated recordings and renders (large binaries)
+render/*.npz
+*.mp4
+media/*_check.png
