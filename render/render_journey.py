@@ -1,10 +1,18 @@
-import sys, subprocess, math, numpy as np, time
+import sys, subprocess, math, numpy as np, time, argparse
 sys.path.insert(0, "fly-ai")
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from matplotlib import colormaps
 from flybrain import FlyBrain
 
-d = np.load("render/recording.npz")
+ap = argparse.ArgumentParser(description="Render a recorded journey to mp4.")
+ap.add_argument("--input", default="render/recording.npz")
+ap.add_argument("--output", default="media/viridian_final.mp4")
+ap.add_argument("--caption", default="fly taps the buttons the game receives")
+ap.add_argument("--bar-label", default="journey to Viridian")
+ap.add_argument("--max-frames", type=int, default=2625)
+args = ap.parse_args()
+
+d = np.load(args.input)
 frames = d["frames"]; N = len(frames)
 fired = d["fired"].astype(np.int64); starts = d["starts"]; btns = d["btns"]; maps = d["maps"]
 tb = int(np.argmax(maps == 12)) if (maps == 12).any() else -1
@@ -79,11 +87,11 @@ try:
 except Exception:
     font = fontS = fontB = ImageFont.load_default()
 
-idxs = np.linspace(0, N - 1, 2625).astype(int).tolist()
+idxs = np.linspace(0, N - 1, min(N, args.max_frames)).astype(int).tolist()
 print("recorded", N, "-> frames", len(idxs), "-> %.1fs at 25fps" % (len(idxs)/25), flush=True)
 proc = subprocess.Popen(["ffmpeg","-y","-loglevel","error","-f","rawvideo","-pix_fmt","rgb24","-s",f"{CW}x{CH}",
                          "-r","25","-i","-","-c:v","libx264","-pix_fmt","yuv420p","-b:v","6000k",
-                         "media/viridian_final.mp4"], stdin=subprocess.PIPE)
+                         args.output], stdin=subprocess.PIPE)
 vpr = cnt[:,1]; dn = cnt[:,2]+cnt[:,3]; fl = cnt[:,1]
 def smooth(a,k=40): return np.convolve(a.astype(np.float32), np.ones(k,np.float32)/k, mode="same")
 fln = smooth(fl); fln = fln/(fln.max()+1e-6)
@@ -96,12 +104,12 @@ for k,t in enumerate(idxs):
     draw_pad(dr, active, fontB)
     press = BUT[active] if active else None
     draw_fly(dr, 190, 372, 30, 0.15*t, fln[t], press)
-    dr.text((12,12), "fly taps the buttons the game receives", font=fontS, fill=(170,180,200))
+    dr.text((12,12), args.caption, font=fontS, fill=(170,180,200))
     dr.text((12, CH-24), ("pressed: "+active.upper()) if active else "pressed: -", font=font, fill=(255,220,120))
     gx, gy, gw, gh = 400, 40, 368, 331
     dr.text((gx,14), "Pokémon Red  |  %s" % NAMES.get(int(maps[t]), "?"), font=font, fill=(230,230,240))
     cv.paste(Image.fromarray(frames[t]).resize((gw,gh),Image.NEAREST),(gx,gy))
-    bar(dr,gx,gy+gh+14,368,10,t/N,(120,220,140)); dr.text((gx,gy+gh+28),"journey to Viridian %.0f%%"%(100*t/N),font=fontS,fill=(120,220,140))
+    bar(dr,gx,gy+gh+14,368,10,t/N,(120,220,140)); dr.text((gx,gy+gh+28),"%s %.0f%%"%(args.bar_label,100*t/N),font=fontS,fill=(120,220,140))
     ty=gy+gh+60; th2=150
     dr.rectangle([gx,ty,gx+368,ty+th2],outline=(40,44,60))
     for arr,col in [(vpr,(57,208,255)),(dn,(255,77,109))]:
