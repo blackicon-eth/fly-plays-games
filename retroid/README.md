@@ -84,6 +84,44 @@ descending-neuron trace is identical for left and right. For degenerate features
 the AUC is not meaningful, which is why the table above reports the closed-loop
 score instead.)
 
+## Two signals: the ball against a falling item
+
+The single-reflex test above shows the connectome is not *necessary* for a
+one-dimensional task. So here is a conflict. The ball drives the chase channel
+(`opp` → LC10a), a falling item drives the projectile channel (`shots` → LPLC1),
+and both are injected at once, on opposite sides. The readout is trained only on
+**single-object** trials (ball alone, item alone), so it never sees a conflict:
+whatever it does when both are present is the connectome arbitrating.
+
+`render/conflict.py` sweeps the item's angular size (its urgency):
+
+![Two-signal conflict: P(right) as the item grows, for the real connectome and with shuffled weights](media/conflict.png)
+
+* **Real connectome.** Small items lose and the ball is followed. Past a size of
+  about 10 the item wins and the fly abandons the ball. The effect is **lateral**:
+  it only happens when the ball is on the right; with the ball on the left the
+  item never wins.
+* **Weights shuffled.** The item never wins at any size; the fly stays on the ball.
+
+So with two competing channels the wiring *does* change the outcome: both the
+arbitration and its left/right asymmetry depend on the connectome. This is the
+first test where scrambling the weights matters.
+
+The same thing happens in the game loop (`render/record_conflict.py`, the ball into
+`opp`, the item into `shots`, readout trained on single objects only). When the ball
+drifts far and an item falls on the other side, the fly abandons the ball for the
+item, and catches it:
+
+![The fly abandoning the ball for a falling item](media/retroid_conflict.gif)
+
+Over 3000 frames it followed the ball on 365 conflict frames and the item on 87.
+With the weights shuffled the item is followed on only 33 conflict frames (out of
+370, i.e. 9% versus 19%): the real connectome gives the second signal about twice
+the decision power. The choices are always bang-bang frame to frame, so this is a
+statistic, not a sustained decision. Caveats: this is a probe and a demo, not a
+benchmark; the numbers depend on the encoder's growth rate and on the readout's
+training.
+
 ## Running it
 
 The ROM is free from the author's itch.io page and is **not committed**. Put it at
@@ -94,6 +132,10 @@ python retroid/play_live.py --scale 4                  # watch it, with a window
 python retroid/render/record_fly.py --steps 1200       # record a run to render/fly_drive.npz
 python retroid/render/render_fly.py                    # render that npz to media/retroid_fly.mp4
 python retroid/render/record_fly.py --ablate shuffle   # the control condition
+python retroid/render/conflict.py --ablate none         # two-signal arbitration
+python retroid/render/conflict.py --ablate shuffle      # and its control
+python retroid/render/record_conflict.py --steps 3000   # the conflict in the game loop
+python retroid/render/render_fly.py --input render/conflict_play.npz --start 790 --end 1030
 ```
 
 ## Caveats
