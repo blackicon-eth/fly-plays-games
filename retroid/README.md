@@ -84,6 +84,12 @@ descending-neuron trace is identical for left and right. For degenerate features
 the AUC is not meaningful, which is why the table above reports the closed-loop
 score instead.)
 
+There is one ablation that does break even the single reflex: **`rewire`**, which
+keeps every neuron's number of inputs but draws them from random neurons. The
+readout then cannot tell left from right at all (AUC 0.667, a flat output), so the
+left/right information is carried by the **wiring**, not by the weight values. The
+task is still too simple to need the weights, but it does need the graph.
+
 ## Two signals: the ball against a falling item
 
 The single-reflex test above shows the connectome is not *necessary* for a
@@ -102,10 +108,16 @@ whatever it does when both are present is the connectome arbitrating.
   it only happens when the ball is on the right; with the ball on the left the
   item never wins.
 * **Weights shuffled.** The item never wins at any size; the fly stays on the ball.
+  The side is still decodable, so the network still works, just with a different
+  arbitration.
+* **Topology rewired.** Every neuron keeps the same number of incoming connections,
+  but they now come from random neurons. The readout can no longer tell left from
+  right **at all** (the output is a flat 0.48). So the left/right information lives
+  in the **wiring**, while the arbitration is shaped by the weights.
 
-So with two competing channels the wiring *does* change the outcome: both the
-arbitration and its left/right asymmetry depend on the connectome. This is the
-first test where scrambling the weights matters.
+So the wiring *does* matter. Rewiring the graph destroys the signal entirely, and
+even scrambling only the weights changes the arbitration and its left/right
+asymmetry. This is the first test where damaging the connectome changes the outcome.
 
 The same thing happens in the game loop (`render/record_conflict.py`, the ball into
 `opp`, the item into `shots`, readout trained on single objects only). When the ball
@@ -114,13 +126,15 @@ item, and catches it:
 
 ![The fly abandoning the ball for a falling item](media/retroid_conflict.gif)
 
-Over 3000 frames it followed the ball on 365 conflict frames and the item on 87.
-With the weights shuffled the item is followed on only 33 conflict frames (out of
-370, i.e. 9% versus 19%): the real connectome gives the second signal about twice
-the decision power. The choices are always bang-bang frame to frame, so this is a
-statistic, not a sustained decision. Caveats: this is a probe and a demo, not a
-benchmark; the numbers depend on the encoder's growth rate and on the readout's
-training.
+Over 3000 frames it followed the ball on 365 conflict frames and the item on 87
+(9% for the shuffled weights). But those are two separate runs, and each run's
+decisions change the game, so the conflict states differ. `render/conflict_paired.py`
+fixes that: one run, both readouts evaluated on the **same** (ball dx, item dx). On
+331 conflict frames the real connectome follows the item **25%** of the time and the
+shuffled one **15%**, and they disagree on **10%** of them. The choices are always
+bang-bang frame to frame, so this is a statistic, not a sustained decision. Caveats:
+this is a probe and a demo, not a benchmark; the numbers depend on the encoder's
+growth rate and on the readout's training.
 
 ## Running it
 
@@ -133,8 +147,10 @@ python retroid/render/record_fly.py --steps 1200       # record a run to render/
 python retroid/render/render_fly.py                    # render that npz to media/retroid_fly.mp4
 python retroid/render/record_fly.py --ablate shuffle   # the control condition
 python retroid/render/conflict.py --ablate none         # two-signal arbitration
-python retroid/render/conflict.py --ablate shuffle      # and its control
+python retroid/render/conflict.py --ablate shuffle      # weights scrambled
+python retroid/render/conflict.py --ablate rewire       # topology scrambled
 python retroid/render/record_conflict.py --steps 3000   # the conflict in the game loop
+python retroid/render/conflict_paired.py --steps 2500   # both readouts on the same states
 python retroid/render/render_fly.py --input render/conflict_play.npz --start 790 --end 1030
 ```
 

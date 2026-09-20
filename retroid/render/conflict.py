@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "fly-ai"))
 sys.path.insert(0, str(GAME))
 
 from flybrain import FlyBrain
-from retroidsim import dn_features_pair
+from retroidsim import ablate, dn_features_pair
 
 BALL_SIZE = 16.0
 ITEM_TRAIN_SIZE = 16.0
@@ -56,16 +56,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default=str(ROOT / "data" / "fly-data"))
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--ablate", choices=("none", "shuffle", "silence"), default="none")
+    ap.add_argument("--ablate", choices=("none", "shuffle", "rewire", "silence"), default="none")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     print("loading the connectome...", flush=True)
     brain = FlyBrain(data=args.data, device=args.device)
-    if args.ablate == "shuffle":
-        np.random.default_rng(args.seed).shuffle(brain.weights)
-    elif args.ablate == "silence":
-        brain.weights[:] = 0.0
+    ablate(brain, args.ablate, args.seed)
     readout = train_readout(brain)
     print("ablation=%s  readout cross-validated AUC %.3f" % (args.ablate, readout.cv_score), flush=True)
 

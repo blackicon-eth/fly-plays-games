@@ -29,22 +29,11 @@ sys.path.insert(0, str(ROOT / "fly-ai"))
 sys.path.insert(0, str(GAME))
 
 from flybrain import FlyBrain
-from retroidsim import DEFAULT_ROM, RetroidAdapter, dn_features, train_readout
+from retroidsim import DEFAULT_ROM, RetroidAdapter, ablate, dn_features, train_readout
 
 DIRIDX = {"up": 0, "down": 1, "left": 2, "right": 3}
 BTNIDX = {"up": 0, "down": 1, "left": 2, "right": 3, "a": 4, "b": 5}
 LAUNCH_HOLD = 10
-
-
-def ablate(brain, mode: str, seed: int) -> None:
-    if mode == "none":
-        return
-    if mode == "shuffle":
-        np.random.default_rng(seed).shuffle(brain.weights)   # scramble the connectome in place
-    elif mode == "silence":
-        brain.weights[:] = 0.0                               # no synapses: only the injected drive
-    else:
-        raise ValueError(f"unknown ablation: {mode}")
 
 
 def main() -> None:
@@ -55,7 +44,7 @@ def main() -> None:
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--data", default=str(ROOT / "data" / "fly-data"))
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--ablate", choices=("none", "shuffle", "silence"), default="none")
+    ap.add_argument("--ablate", choices=("none", "shuffle", "rewire", "silence"), default="none")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(GAME / "render" / "fly_drive.npz"))
     args = ap.parse_args()

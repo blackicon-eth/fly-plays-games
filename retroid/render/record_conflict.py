@@ -28,7 +28,7 @@ sys.path.insert(0, str(GAME))
 
 from flybrain import FlyBrain
 from flybrain.reservoir import Readout
-from retroidsim import DEFAULT_ROM, RetroidAdapter, dn_features_pair
+from retroidsim import DEFAULT_ROM, RetroidAdapter, ablate, dn_features_pair
 
 DIRIDX = {"up": 0, "down": 1, "left": 2, "right": 3}
 BTNIDX = {"up": 0, "down": 1, "left": 2, "right": 3, "a": 4, "b": 5}
@@ -53,7 +53,7 @@ def main() -> None:
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--data", default=str(ROOT / "data" / "fly-data"))
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--ablate", choices=("none", "shuffle", "silence"), default="none")
+    ap.add_argument("--ablate", choices=("none", "shuffle", "rewire", "silence"), default="none")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(GAME / "render" / "conflict_play.npz"))
     args = ap.parse_args()
@@ -61,10 +61,7 @@ def main() -> None:
     print("loading the connectome...", flush=True)
     view = FlyBrain(data=args.data, device=args.device)
     decide = FlyBrain(data=args.data, device=args.device)
-    if args.ablate == "shuffle":
-        np.random.default_rng(args.seed).shuffle(decide.weights)
-    elif args.ablate == "silence":
-        decide.weights[:] = 0.0
+    ablate(decide, args.ablate, args.seed)
     readout = train_readout(decide)
     print("ablation=%s  readout cross-validated AUC %.3f" % (args.ablate, readout.cv_score), flush=True)
 
