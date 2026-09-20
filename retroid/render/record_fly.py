@@ -95,7 +95,7 @@ def main() -> None:
     survived, dxs = 0, []
     for step in range(args.steps):
         st = a.state()
-        if st.in_play and not st.ball_resting:
+        if a.ball_live():
             dx = st.dx
             dxs.append(abs(dx))
             survived += 1

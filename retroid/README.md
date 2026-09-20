@@ -52,13 +52,13 @@ ball offset dx ─▶ visual projection neurons ─▶ the connectome ─▶ des
 
 ## Results
 
-The fly keeps the ball alive about as well as a scripted tracker that reads the
-same sprite position:
+From the level-1 start, the fly keeps the ball alive longer than a scripted
+dead-zone tracker that reads the same sprite position:
 
-| Driver | first ball lost | mean \|dx\| |
-| --- | --- | --- |
-| scripted tracker (dead-zone 2 px) | frame 2355 | 5.2 px |
-| **fly (connectome + readout)** | frame 3549 | 5.1 px |
+| Driver | first ball lost |
+| --- | --- |
+| scripted tracker (dead-zone 2 px) | frame 2344 |
+| **fly (connectome + readout)** | frame 4002 |
 
 ## What the ablation says
 
@@ -68,9 +68,10 @@ The honest test is not "can the fly play" but "does the connectome matter". The
 
 | Ablation | frames in play (of 800) | mean \|dx\| |
 | --- | --- | --- |
-| `none` (real connectome) | 796 | 4.6 px |
-| `shuffle` (weights shuffled) | 796 | 4.6 px |
-| `silence` (weights zeroed) | 676 | 81 px |
+| `none` (real connectome) | 800 | 2.9 px |
+| `shuffle` (weights shuffled) | 800 | 2.9 px |
+| `rewire` (topology randomized) | 749 | 30.6 px |
+| `silence` (weights zeroed) | 749 | 30.6 px |
 
 The deflating but honest result: **a shuffled connectome tracks the ball exactly
 as well as the real one**, because the task is one-dimensional and the side is
@@ -84,11 +85,44 @@ descending-neuron trace is identical for left and right. For degenerate features
 the AUC is not meaningful, which is why the table above reports the closed-loop
 score instead.)
 
-There is one ablation that does break even the single reflex: **`rewire`**, which
-keeps every neuron's number of inputs but draws them from random neurons. The
-readout then cannot tell left from right at all (AUC 0.667, a flat output), so the
-left/right information is carried by the **wiring**, not by the weight values. The
-task is still too simple to need the weights, but it does need the graph.
+Two ablations do break the reflex: **`rewire`** (every neuron keeps its number of
+inputs but draws them from random neurons) and **`silence`**. Both flatten the
+descending-neuron trace -- it becomes *identical* for every ball offset -- so the
+readout outputs a constant and the paddle stops tracking. The side is therefore
+carried by the **wiring**, not by the weight values. (The readout still *reports*
+AUC 1.000 in both cases: the upstream `auc` scores tied predictions as if they were
+ordered, so a constant output comes out at 1.000 instead of 0.5. Another reason the
+closed-loop score above is the honest one.)
+
+## Survival: the game's own outcome
+
+`mean |dx|` is a proxy. Retroid has a real outcome: when the ball passes the
+paddle you lose a life, and the ball sprite disappears from the OAM table. So the
+honest score is **frames until the first lost ball**, with the fly relaunching
+after each loss like a player (`render/survival.py`). Four starting scenes (the
+level start plus three mid-flight snapshots from `render/make_scenes.py`), cap 1500
+frames; `shuffle`/`rewire`/`random` run over two seeds.
+
+| Driver | frames to first lost ball (mean over 4 scenes) |
+| --- | --- |
+| **fly, real connectome** | **>1500 (never lost)** |
+| fly, weights shuffled | >1500 (never lost) |
+| fly, topology rewired | 204 |
+| fly, weights silenced | 204 |
+| scripted tracker (oracle) | 1372 |
+| random paddle | 111 / 174 |
+| no input at all | 162 |
+
+The fly keeps the ball alive through all 1500 frames from every scene, and so does
+a fly whose *weights* are scrambled. But randomise the *wiring* -- or zero the
+weights -- and it loses the ball in about 200 frames, no better than a random
+paddle. `rewire` and `silence` are numerically identical here because both flatten
+the descending-neuron trace to a constant, so the paddle gets the same fixed
+command. This is the same picture as the proxy, now with a real consequence: for a
+single reflex the weight values are not needed, but the specific wiring is.
+
+(Without the cap, the fly loses its first ball at frame 4002 from the level start,
+against 2344 for the scripted tracker.)
 
 ## Two signals: the ball against a falling item
 
@@ -146,6 +180,8 @@ python retroid/play_live.py --scale 4                  # watch it, with a window
 python retroid/render/record_fly.py --steps 1200       # record a run to render/fly_drive.npz
 python retroid/render/render_fly.py                    # render that npz to media/retroid_fly.mp4
 python retroid/render/record_fly.py --ablate shuffle   # the control condition
+python retroid/render/make_scenes.py --every 450       # extra mid-flight scenes
+python retroid/render/survival.py --scenes level1 --budget 1500   # lives: the real outcome
 python retroid/render/conflict.py --ablate none         # two-signal arbitration
 python retroid/render/conflict.py --ablate shuffle      # weights scrambled
 python retroid/render/conflict.py --ablate rewire       # topology scrambled
@@ -163,3 +199,8 @@ python retroid/render/render_fly.py --input render/conflict_play.npz --start 790
 * **Levels with enemies or multiple balls** are out of reach.
 * **Sprite identification** assumes the ball stays tile `$00`; a level that
   reuses that tile for something else would confuse the adapter.
+* **Lost-ball detection.** A lost ball is the sprite disappearing from the OAM
+  table, not the ball's height: a *caught* ball dips to y=131 at the bottom of a
+  bounce, so a height threshold would misread every bounce as a lost ball and
+  freeze the paddle for a few frames. (An earlier version did exactly that; the
+  numbers above are from the fixed detection.)

@@ -16,6 +16,7 @@ settle at the centre, and bookmarks that moment once. Later resets are instant.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,8 +53,7 @@ class RetroidState:
 
     `paddle_x` is the centre of the paddle in screen pixels (the paddle is three
     tiles wide); `ball_x`/`ball_y` are the ball's top-left corner. `dx` is the
-    horizontal offset the fly reacts to. `ball_resting` is true while a fresh
-    ball waits on the paddle to be launched.
+    horizontal offset the fly reacts to.
     """
 
     paddle_x: float | None
@@ -78,10 +78,6 @@ class RetroidState:
     def in_play(self) -> bool:
         return self.ball_x is not None and self.paddle_x is not None
 
-    @property
-    def ball_resting(self) -> bool:
-        return self.ball_y is not None and self.ball_y >= SCREEN_H - 14
-
 
 class RetroidAdapter:
     """A headless Retroid you can step, hold buttons on and read sprites from.
@@ -99,6 +95,7 @@ class RetroidAdapter:
             raise FileNotFoundError(f"no ROM at {self.rom}; see README.md")
         self.scenes_dir = Path(scenes_dir) if scenes_dir else SCENES_DIR
         self.pb = pyboy.PyBoy(str(self.rom), window=window, scale=scale)
+        self._ball_hist: deque = deque(maxlen=8)   # recent ball positions, for `ball_live`
 
     # ---- sprites --------------------------------------------------------------------
 
@@ -136,10 +133,26 @@ class RetroidAdapter:
             return None
         return (min(xs) + max(xs)) / 2 + 4
 
+    def ball_live(self, window: int = 4) -> bool:
+        """True while a launched ball is in play.
+
+        A ball resting on the paddle, one that has just appeared, and a lost ball
+        are all *not* live; a launched ball is. The test is motion over the last
+        `window` frames, not the ball's height: a caught ball dips to y=131 at the
+        bottom of a bounce, which a y-threshold would misread as "ball lost" and
+        would freeze the paddle for a few frames at every bounce.
+        """
+        hist = list(self._ball_hist)[-(window + 1):]
+        if len(hist) < window + 1 or any(b is None for b in hist):
+            return False
+        return any(hist[i] != hist[i - 1] for i in range(1, len(hist)))
+
     # ---- stepping and input ---------------------------------------------------------
 
     def step(self, frames: int = 1) -> None:
-        self.pb.tick(frames)
+        for _ in range(frames):
+            self.pb.tick(1)
+            self._ball_hist.append(self.ball())
 
     def hold(self, button: str) -> None:
         self.pb.button_press(self._check(button))
@@ -203,6 +216,7 @@ class RetroidAdapter:
     def load_scene(self, name: str) -> RetroidState:
         with open(self.scene_path(name), "rb") as f:
             self.pb.load_state(f)
+        self._ball_hist.clear()
         return self.state()
 
     def launch(self, hold: int = LAUNCH_HOLD) -> None:
@@ -238,7 +252,7 @@ class RetroidAdapter:
                 break
         if appeared is None:
             raise RuntimeError("opening did not reach the level; is this the right ROM?")
-        if not self.state().ball_resting:
+        if self.ball() is None:
             raise RuntimeError("the ball is not resting on the paddle after the opening")
 
     def close(self) -> None:

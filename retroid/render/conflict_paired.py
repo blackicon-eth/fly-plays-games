@@ -69,7 +69,7 @@ def main() -> None:
     disagree = 0
     for step in range(args.steps):
         st = a.state()
-        if st.in_play and not st.ball_resting:
+        if a.ball_live():
             dx, idx = st.dx, st.item_dx
             pa = float(r_real.predict(dn_features_pair(real, dx, idx)))
             pb = float(r_shuf.predict(dn_features_pair(shuf, dx, idx)))

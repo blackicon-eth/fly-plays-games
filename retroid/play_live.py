@@ -59,7 +59,7 @@ def main() -> None:
     try:
         for step in range(args.steps):
             st = a.state()
-            if not st.in_play or st.ball_resting:
+            if not a.ball_live():
                 if held:
                     a.release(held)
                     held = None

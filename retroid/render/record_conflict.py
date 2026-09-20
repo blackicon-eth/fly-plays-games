@@ -105,7 +105,7 @@ def main() -> None:
 
     for step in range(args.steps):
         st = a.state()
-        if st.in_play and not st.ball_resting:
+        if a.ball_live():
             dx = st.dx
             p = float(readout.predict(dn_features_pair(decide, dx, st.item_dx)))
             want = "right" if p >= 0.5 else "left"
