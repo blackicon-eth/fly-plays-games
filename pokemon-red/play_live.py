@@ -9,21 +9,25 @@ reflex, not a plan -- the long walk from Pallet to Viridian in the video is a
 separate, scripted teacher (see render/record_journey.py, which can also open a
 window with --window SDL2).
 
-    python play_live.py --scene route1 --scale 4
-    python play_live.py --make-scene overworld   # if you have no saved scenes
+    python pokemon-red/play_live.py --scene route1 --scale 4
+    python pokemon-red/play_live.py --make-scene overworld   # if you have no saved scenes
 
-Run it from the repository root. Scene bookmarks live in roms/scenes/ and are not
-committed; the connectome files are downloaded to --data on first use.
+Run it from anywhere. Scene bookmarks live in `pokemon-red/roms/scenes/` and are
+not committed; the connectome files are downloaded to --data on first use.
 """
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, ".")
-sys.path.insert(0, "fly-ai")
+GAME = Path(__file__).resolve().parent          # pokemon-red/
+ROOT = GAME.parent                              # repository root (data/, fly-ai/)
+sys.path.insert(0, str(GAME))
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "fly-ai"))
 
 from flybrain import FlyBrain
 from flybrain.eyes import FeatureDetectors
@@ -63,7 +67,7 @@ def main() -> None:
     ap.add_argument("--make-scene", default=None, metavar="NAME", help="bookmark the current moment as NAME and exit")
     ap.add_argument("--scale", type=int, default=4, help="PyBoy window scale")
     ap.add_argument("--steps", type=int, default=400, help="how many decisions to run")
-    ap.add_argument("--data", default="data/fly-data", help="folder with brain.npz and weights.npz")
+    ap.add_argument("--data", default=str(ROOT / "data" / "fly-data"), help="folder with brain.npz and weights.npz")
     ap.add_argument("--device", default="cpu", help="cpu, cuda or auto")
     args = ap.parse_args()
 

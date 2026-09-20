@@ -1,5 +1,8 @@
 import sys, collections, numpy as np, random, time, argparse
-sys.path.insert(0, "."); sys.path.insert(0, "fly-ai")
+from pathlib import Path
+GAME = Path(__file__).resolve().parents[1]      # pokemon-red/
+ROOT = GAME.parent                              # repository root (data/, fly-ai/)
+sys.path.insert(0, str(GAME)); sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "fly-ai"))
 from pokesim import PokemonAdapter
 from flybrain import FlyBrain
 
@@ -16,7 +19,7 @@ DIRIDX = {"up":0,"down":1,"left":2,"right":3}
 BTNIDX = {"up":0,"down":1,"left":2,"right":3,"a":4,"b":5}
 def walk(t): return (t is not None) and (t in WALKSET) and (t not in LEDGE)
 
-b = FlyBrain(data="data/fly-data", device="cpu"); az = b.azimuth; src = np.linspace(-1, 1, 160); prev = None
+b = FlyBrain(data=str(ROOT / "data" / "fly-data"), device="cpu"); az = b.azimuth; src = np.linspace(-1, 1, 160); prev = None
 a = PokemonAdapter(window=args.window, scale=args.scale)
 def pos(): return (a.read("x"), a.read("y"))
 def tm(): return [[a.read(0xC3A0 + r*20 + c) for c in range(20)] for r in range(18)]
@@ -138,7 +141,7 @@ for it in range(600):
 
 a.close()
 lens = np.array([len(f) for f in F])
-np.savez("render/recording.npz", frames=np.array(FR, np.uint8), fired=np.concatenate(F),
+np.savez(GAME / "render" / "recording.npz", frames=np.array(FR, np.uint8), fired=np.concatenate(F),
          starts=np.concatenate([[0], np.cumsum(lens)]), dirs=np.array(DIRS, np.int8),
          pxy=np.array(PXY, np.int16), btns=np.array(BTN, np.int8), maps=np.array(MAPS, np.int16))
 print("reached", reached, "frames", len(FR), "in %.1fs" % (time.time()-t0))

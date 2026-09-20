@@ -1,12 +1,15 @@
 import sys, subprocess, math, numpy as np, time, argparse
-sys.path.insert(0, "fly-ai")
+from pathlib import Path
+GAME = Path(__file__).resolve().parents[1]      # pokemon-red/
+ROOT = GAME.parent                              # repository root (data/, fly-ai/)
+sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "fly-ai"))
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from matplotlib import colormaps
 from flybrain import FlyBrain
 
 ap = argparse.ArgumentParser(description="Render a recorded journey to mp4.")
-ap.add_argument("--input", default="render/recording.npz")
-ap.add_argument("--output", default="media/viridian_final.mp4")
+ap.add_argument("--input", default=str(GAME / "render" / "recording.npz"))
+ap.add_argument("--output", default=str(GAME / "media" / "viridian_final.mp4"))
 ap.add_argument("--caption", default="fly taps the buttons the game receives")
 ap.add_argument("--bar-label", default="journey to Viridian")
 ap.add_argument("--max-frames", type=int, default=2625)
@@ -16,7 +19,7 @@ d = np.load(args.input)
 frames = d["frames"]; N = len(frames)
 fired = d["fired"].astype(np.int64); starts = d["starts"]; btns = d["btns"]; maps = d["maps"]
 tb = int(np.argmax(maps == 12)) if (maps == 12).any() else -1
-b = FlyBrain(data="data/fly-data", device="cpu"); n = b.n; sc = b.superclass.astype(str); side = b.side.astype(str)
+b = FlyBrain(data=str(ROOT / "data" / "fly-data"), device="cpu"); n = b.n; sc = b.superclass.astype(str); side = b.side.astype(str)
 label = np.zeros(n, np.uint8)
 label[sc == "visual_projection"] = 1
 label[(sc == "descending_neuron") & (side == "L")] = 2

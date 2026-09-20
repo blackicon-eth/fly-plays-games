@@ -29,6 +29,6 @@ build/
 data/
 
 # Generated recordings and renders (large binaries)
-render/*.npz
+**/render/*.npz
 *.mp4
-media/*_check.png
+**/media/*_check.png

@@ -6,19 +6,23 @@ fly's visual channels, and a small readout on its descending neurons picks left 
 right. It is a reflex with no plan, so the behaviour is aimless on purpose. The
 connectome's screen-driven activity is recorded for the right-hand panel.
 
-    python render/record_fly.py --scene pallet --steps 80
+    python pokemon-red/render/record_fly.py --scene pallet --steps 80
 
-Writes render/fly_drive.npz, which render/render_journey.py can render.
+Writes `pokemon-red/render/fly_drive.npz`, which render_journey.py can render.
 """
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, ".")
-sys.path.insert(0, "fly-ai")
+GAME = Path(__file__).resolve().parents[1]      # pokemon-red/
+ROOT = GAME.parent                              # repository root (data/, fly-ai/)
+sys.path.insert(0, str(GAME))
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "fly-ai"))
 
 from flybrain import FlyBrain
 from flybrain.eyes import FeatureDetectors
@@ -58,9 +62,9 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=80, help="how many decisions to run")
     ap.add_argument("--window", default="null")
     ap.add_argument("--scale", type=int, default=3)
-    ap.add_argument("--data", default="data/fly-data")
+    ap.add_argument("--data", default=str(ROOT / "data" / "fly-data"))
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--out", default="render/fly_drive.npz")
+    ap.add_argument("--out", default=str(GAME / "render" / "fly_drive.npz"))
     args = ap.parse_args()
 
     print("loading the connectome...", flush=True)
