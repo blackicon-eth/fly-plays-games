@@ -61,7 +61,7 @@ the same brain, front end, readout and reflex.
 | Game | Folder | Status | What the fly does |
 | --- | --- | --- | --- |
 | Pokémon Red | [`pokemon-red/`](pokemon-red/README.md) | done | reacts to the screen; the long walk is a scripted teacher |
-| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | planned | keep the paddle under the ball (left/right tracking) |
+| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | tracks the ball with the paddle (left/right reflex) |
 
 ## What is real, and what is not
 
@@ -93,7 +93,7 @@ its README; no ROM is committed.
 
 ```
 pokemon-red/     the Pokémon Red chapter (adapter, render scripts, README)
-retroid/         the Arkanoid chapter (planned)
+retroid/         the Arkanoid chapter (adapter, render scripts, README)
 fly-ai/          the upstream flybrain package (MIT) -- not committed, clone it
 data/            connectome files -- not committed
 requirements.txt, LICENSE
