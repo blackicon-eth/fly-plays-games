@@ -2,9 +2,10 @@
 
 *Part of [fly-plays-games](../README.md): a real fruit-fly connectome driving games.*
 
-**Status: working.** The fly connectome tracks the ball with the paddle. Same
-brain, same visual front end and same readout as the Pokémon Red chapter; only
-the game adapter is new.
+**Status: working (level 1).** The fly connectome tracks the ball with the paddle
+and keeps it alive; an ablation shows the specific *wiring* -- not the weight
+values -- is what carries the signal. Same brain, same visual front end and same
+readout as the Pokémon Red chapter; only the game adapter is new.
 
 ![The fly connectome driving Retroid: the fly on a gamepad, the game with a ball/paddle track, and the connectome's activity](media/retroid_fly.gif)
 
@@ -75,10 +76,10 @@ The honest test is not "can the fly play" but "does the connectome matter". The
 
 The deflating but honest result: **a shuffled connectome tracks the ball exactly
 as well as the real one**, because the task is one-dimensional and the side is
-linearly decodable from almost any encoding. Zeroing the weights breaks it
-entirely. So the connectome is genuinely in the loop and genuinely produces the
-button presses, but for a single left/right reflex it is **not necessary**. It
-would take a task whose structure depends on the specific wiring to change that.
+linearly decodable from almost any encoding. So the connectome is genuinely in the
+loop and genuinely produces the button presses, but for a single left/right reflex
+its **weight values are not necessary**. What *is* necessary is the wiring: break
+the topology (`rewire`) or the synapses (`silence`) and the reflex collapses.
 
 (Note: the readout's cross-validated AUC reads 1.000 even for `silence`, where the
 descending-neuron trace is identical for left and right. For degenerate features
@@ -126,8 +127,8 @@ against 2344 for the scripted tracker.)
 
 ## Two signals: the ball against a falling item
 
-The single-reflex test above shows the connectome is not *necessary* for a
-one-dimensional task. So here is a conflict. The ball drives the chase channel
+The single-reflex tests above show the connectome's *weights* are not necessary
+for a one-dimensional task. So here is a conflict. The ball drives the chase channel
 (`opp` → LC10a), a falling item drives the projectile channel (`shots` → LPLC1),
 and both are injected at once, on opposite sides. The readout is trained only on
 **single-object** trials (ball alone, item alone), so it never sees a conflict:
@@ -151,7 +152,8 @@ whatever it does when both are present is the connectome arbitrating.
 
 So the wiring *does* matter. Rewiring the graph destroys the signal entirely, and
 even scrambling only the weights changes the arbitration and its left/right
-asymmetry. This is the first test where damaging the connectome changes the outcome.
+asymmetry. Together with the survival test, this is where damaging the connectome
+changes the outcome.
 
 The same thing happens in the game loop (`render/record_conflict.py`, the ball into
 `opp`, the item into `shots`, readout trained on single objects only). When the ball
@@ -160,15 +162,16 @@ item, and catches it:
 
 ![The fly abandoning the ball for a falling item](media/retroid_conflict.gif)
 
-Over 3000 frames it followed the ball on 365 conflict frames and the item on 87
-(9% for the shuffled weights). But those are two separate runs, and each run's
-decisions change the game, so the conflict states differ. `render/conflict_paired.py`
-fixes that: one run, both readouts evaluated on the **same** (ball dx, item dx). On
-331 conflict frames the real connectome follows the item **25%** of the time and the
-shuffled one **15%**, and they disagree on **10%** of them. The choices are always
-bang-bang frame to frame, so this is a statistic, not a sustained decision. Caveats:
-this is a probe and a demo, not a benchmark; the numbers depend on the encoder's
-growth rate and on the readout's training.
+In one 3000-frame run it followed the item on 96 conflict frames and the ball on 65.
+But two separate runs diverge, so `render/conflict_paired.py` evaluates both
+readouts on the **same** (ball dx, item dx): on 161 conflict frames the real
+connectome follows the item **60%** of the time and the shuffled one **16%**, and
+they disagree on **44%** of them. The item wins more in-game than in the size sweep
+above because it is injected *growing* as it falls, which carries it past the size
+where it out-competes the ball. The choices are always bang-bang frame to frame, so
+this is a statistic, not a sustained decision. Caveats: this is a probe and a demo,
+not a benchmark; the numbers depend on the encoder's growth rate and on the readout's
+training.
 
 ## Running it
 

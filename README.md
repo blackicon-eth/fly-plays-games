@@ -29,7 +29,7 @@ games, and tries to be explicit about three things:
 
 ## The shared pipeline
 
-Once per 20 ms game frame:
+Each decision (a short window of connectome steps per game frame):
 
 ```
 screen pixels ─▶ visual projection neurons ─▶ the connectome ─▶ descending neurons ─▶ readout ─▶ button
@@ -61,7 +61,7 @@ the same brain, front end, readout and reflex.
 | Game | Folder | Status | What the fly does |
 | --- | --- | --- | --- |
 | Pokémon Red | [`pokemon-red/`](pokemon-red/README.md) | done | reacts to the screen; the long walk is a scripted teacher |
-| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | tracks the ball with the paddle (left/right reflex) |
+| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | keeps the ball alive with the paddle; ablations show the wiring, not the weights, carries the signal |
 
 ## What is real, and what is not
 
