@@ -32,3 +32,6 @@ data/
 **/render/*.npz
 *.mp4
 **/media/*_check.png
+
+# Notes
+NOTES.md

@@ -7,8 +7,10 @@ plain Python.
 Retroid draws the paddle and the ball as hardware sprites, so we read them from
 the OAM table at $FE00 instead of guessing at WRAM addresses: each of the 40
 slots is four bytes (screen y, screen x, tile, attributes), and the game keeps
-the ball in tile $00 and the three-tile paddle in tiles $01-$03. The adapter
-identifies them by tile, so it does not depend on the slot order.
+the ball in tile $00 and the paddle in tiles $01-$03. A power-up swaps the paddle
+graphic for other tiles ($04/$05, or the three-tile sets $1B-$20), so the paddle
+tile set is a tuple of all the forms the game uses. The adapter identifies them
+by tile, so it does not depend on the slot order.
 
 The opening is a fixed script that ignores input while the paddle slides in from
 the left, so `reset_to_play` mashes A to reach the level, waits for the paddle to
@@ -32,7 +34,12 @@ OAM_SLOTS = 40
 SCREEN_W, SCREEN_H = 160, 144
 
 BALL_TILE = 0x00
-PADDLE_TILES = (0x01, 0x02, 0x03)
+# Normal paddle ($01-$03: left, middle, right) plus every transformed form seen in
+# play -- a middle/right swap ($04/$05) and two three-tile sets ($1B-$1D, $1E-$20)
+# used by the power-ups that change the paddle. Missing one makes the paddle
+# invisible to the adapter, so the fly stops steering.
+PADDLE_TILES = (0x01, 0x02, 0x03, 0x04, 0x05,
+                0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20)
 ITEM_TILES = (0x18, 0x19)   # the falling capsule in level 1 (two animation frames)
 
 BUTTONS = ("a", "b", "start", "select", "up", "down", "left", "right")
@@ -89,12 +96,12 @@ class RetroidAdapter:
     """
 
     def __init__(self, rom: str | Path = DEFAULT_ROM, scenes_dir: str | Path | None = None,
-                 window: str = "null", scale: int = 3):
+                 window: str = "null", scale: int = 3, sound_volume: int = 100):
         self.rom = Path(rom)
         if not self.rom.exists():
             raise FileNotFoundError(f"no ROM at {self.rom}; see README.md")
         self.scenes_dir = Path(scenes_dir) if scenes_dir else SCENES_DIR
-        self.pb = pyboy.PyBoy(str(self.rom), window=window, scale=scale)
+        self.pb = pyboy.PyBoy(str(self.rom), window=window, scale=scale, sound_volume=sound_volume)
         self._ball_hist: deque = deque(maxlen=8)   # recent ball positions, for `ball_live`
 
     # ---- sprites --------------------------------------------------------------------

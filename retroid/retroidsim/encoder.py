@@ -9,6 +9,8 @@ readout reads a side off that activity. Same one reflex, no memory.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from flybrain.eyes import FeatureDetectors
@@ -58,27 +60,46 @@ def object_demand(y: float | None, vy: float | None, dx: float | None = None,
                   stake: float = 1.0, paddle_y: float = PADDLE_Y, k: float = PERSPECTIVE_K,
                   eps: float = URGENCY_EPS, paddle_speed: float = PADDLE_SPEED,
                   lam: float = URGENCY_LAMBDA, tau: float = URGENCY_TAU,
-                  cap: float = DRIVE_CAP) -> float:
+                  cap: float = DRIVE_CAP, size_weight: float = 1.0,
+                  diagonal: bool = False) -> float:
     """The chase drive an object asks for.
 
     Proximity (angular size) plus imminence (loom rate, only while falling with
     `vy > 0`), scaled by `stake`, saturating at `cap`. Zero if the object is
     absent, so an ascending or far object asks for little and a falling, close,
     laterally distant one asks for the most.
+
+    `size_weight` scales how much raw proximity counts. Set it low for an object
+    whose *position* is already carried by a constant tracking drive (the ball):
+    otherwise a close object that is moving away still looks urgent, because its
+    size stays large even when its loom rate is zero.
+
+    `diagonal` measures distance as the straight line from the paddle to the object
+    (`|dx|` and the vertical gap together) instead of the vertical gap alone. A
+    laterally distant object is then *farther* and looms *less*, so it stops asking
+    for a detour without a separate reach discount: proximity and imminence both fall
+    off smoothly, which a linear readout can use. Only `|dx|` enters the non-diagonal
+    loom, as a boost when the paddle cannot cover it in time.
     """
     if y is None:
         return 0.0
-    dist = max(float(paddle_y) - float(y), eps)
-    size = k / dist
-    loom = 0.0
+    dy = max(float(paddle_y) - float(y), eps)
     v = float(vy or 0.0)
-    if v > 0.0:
-        loom = k * v / (dist * dist)
-        if dx is not None:
-            t_arrive = dist / v
-            t_cover = abs(float(dx)) / paddle_speed
-            loom *= 1.0 + t_cover / t_arrive
-    demand = stake * (size + lam * loom)
+    if diagonal and dx is not None:
+        d = math.hypot(float(dx), dy)
+        size = k / d
+        loom = (k * dy * v / (d * d * d)) if v > 0.0 else 0.0
+    else:
+        d = dy
+        size = k / d
+        loom = 0.0
+        if v > 0.0:
+            loom = k * v / (d * d)
+            if dx is not None:
+                t_arrive = d / v
+                t_cover = abs(float(dx)) / paddle_speed
+                loom *= 1.0 + t_cover / t_arrive
+    demand = stake * (size_weight * size + lam * loom)
     return cap * demand / (demand + tau)
 
 
