@@ -41,6 +41,10 @@ BALL_TILE = 0x00
 PADDLE_TILES = (0x01, 0x02, 0x03, 0x04, 0x05,
                 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20)
 ITEM_TILES = (0x18, 0x19)   # the falling capsule in level 1 (two animation frames)
+# The font sprites the game draws centered on the GAME OVER / menu screens (four
+# two-by-two letters). They never appear as sprites during play -- the HUD uses the
+# background -- so seeing one means the game is waiting on a press.
+MENU_TILES = tuple(range(0x08, 0x18))
 
 BUTTONS = ("a", "b", "start", "select", "up", "down", "left", "right")
 
@@ -133,6 +137,11 @@ class RetroidAdapter:
             if tile in ITEM_TILES:
                 return x, y
         return None
+
+    def menu_text(self) -> bool:
+        """True while the GAME OVER / menu letter sprites are on screen, i.e. the
+        game is waiting for a press rather than for the ball."""
+        return any(tile in MENU_TILES for _, _, tile in self._visible())
 
     def paddle_x(self) -> float | None:
         xs = [x for x, _, tile in self._visible() if tile in PADDLE_TILES]

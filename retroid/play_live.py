@@ -36,8 +36,9 @@ sys.path.insert(0, str(ROOT / "fly-ai"))
 
 from flybrain import FlyBrain
 from flybrain.reservoir import Readout
-from retroidsim import (DEFAULT_ROM, STAKE_BALL, STAKE_ITEM, RetroidAdapter,
-                        dn_features, dn_features_chase2, object_demand, train_readout)
+from retroidsim import (DEFAULT_ROM, STAKE_BALL, STAKE_ITEM, ContinuousChase, RetroidAdapter,
+                        dn_features, dn_features_chase2, object_demand,
+                        train_continuous_readout, train_readout)
 
 
 def train_items_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight: float = 0.1,
@@ -100,8 +101,10 @@ def main() -> None:
     ap.add_argument("--item-diagonal", action="store_true",
                     help="item distance = straight line paddle-item, so a far one looms less")
     ap.add_argument("--volume", type=int, default=40, help="game sound volume, 0-100")
-    ap.add_argument("--exit-after", type=int, default=8,
+    ap.add_argument("--exit-after", type=int, default=24,
                     help="frames without a live ball after which the level is assumed cleared and the fly drives right")
+    ap.add_argument("--continuous", action="store_true",
+                    help="never reset the brain: one connectome step per frame (fits 60 fps) instead of the threaded 8-step decisions")
     ap.add_argument("--scene", default=None, help="start from a saved mid-flight scene (e.g. level1_c)")
     ap.add_argument("--headless", action="store_true", help="run without a window (tests); throttled to --fps")
     ap.add_argument("--fps", type=float, default=60.0,
@@ -119,7 +122,17 @@ def main() -> None:
 
     print("loading the connectome...", flush=True)
     brain = FlyBrain(data=args.data, device=args.device)
-    if args.items:
+    fly = None
+    if args.continuous:
+        readout = train_continuous_readout(brain, base=args.base, cap=args.cap,
+                                           size_weight=args.size_weight, item_stake=args.item_stake,
+                                           diagonal=args.item_diagonal, with_item=args.items)
+        fly = ContinuousChase(brain)     # fresh state for the live run
+        print(f"decoder: continuous brain, one step per frame (AUC {readout.cv_score:.3f}); "
+              f"ball drive = base {args.base:g} + urgency (size weight {args.size_weight:g}), "
+              f"item drive = urgency (stake {args.item_stake:g}"
+              f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}", flush=True)
+    elif args.items:
         readout = train_items_readout(brain, base=args.base, cap=args.cap,
                                       size_weight=args.size_weight, item_stake=args.item_stake,
                                       diagonal=args.item_diagonal)
@@ -131,11 +144,11 @@ def main() -> None:
         readout = train_readout(brain)
         print(f"readout: cross-validated AUC {readout.cv_score:.3f} on a synthetic L/R sweep", flush=True)
 
-    # One decision costs 8 connectome steps (~50 ms), so the brain can only decide
-    # ~19 times a second, while the Game Boy runs at ~60 fps. Running the brain in a
-    # thread and letting the main loop tick the game at its own rate decouples the two:
-    # the emulator keeps 60 fps (and smooth audio) while the paddle follows decisions
-    # that refresh every few frames. Only this thread touches the brain.
+    # In the default mode a decision costs 8 connectome steps (~50 ms), far more than
+    # a 60 fps frame, so the brain runs in a thread at ~19 decisions/s and the main
+    # loop reads its latest answer. In --continuous mode the brain keeps its state and
+    # takes one step per frame (~4 ms, inside a frame), so it is stepped inline and no
+    # thread is needed.
     box: dict = {"ball": None, "item": None, "want": None, "p": 0.5, "spikes": 0, "stop": False}
     lock = threading.Lock()
 
@@ -163,8 +176,9 @@ def main() -> None:
                 box["p"] = p
                 box["spikes"] = int(brain.fired.size)
 
-    brain_thread = threading.Thread(target=worker, daemon=True)
-    brain_thread.start()
+    if not args.continuous:
+        brain_thread = threading.Thread(target=worker, daemon=True)
+        brain_thread.start()
 
     a = RetroidAdapter(rom=args.rom, window="null" if args.headless else "SDL2",
                        scale=args.scale, sound_volume=args.volume)
@@ -219,27 +233,50 @@ def main() -> None:
             if not a.ball_live():
                 ball_gone += 1
                 box["ball"] = None
-                if ball_gone > args.exit_after:
-                    # The ball has been gone long past a normal loss, so the level is
-                    # cleared: its exit is on the right, so drive to the right edge.
-                    if held != "right":
-                        if held:
-                            a.release(held)
-                        a.hold("right")
-                        held = "right"
-                    a.step(1)
-                else:
+                if ball_gone == 1:
                     relaunches += 1
+                if st.ball_x is not None:
+                    # Ball resting on the paddle: hold A until it launches (a short
+                    # pulse is not enough -- the game wants the button held).
+                    want = "a"
+                elif a.menu_text():
+                    # GAME OVER or a menu: mash A so the fly moves on by itself. Pulse
+                    # it instead of holding, since these screens want distinct presses.
+                    want = "a" if (ball_gone // 2) % 2 == 0 else None
+                elif ball_gone > args.exit_after:
+                    # Gone far past a normal loss with no menu: the level is likely
+                    # cleared and its exit is on the right. Keep asking for A too, since
+                    # a continue screen whose letters the detector missed looks the same.
+                    want = "a" if (ball_gone // 3) % 2 == 0 else "right"
+                else:
+                    # Ball gone (a loss animation): pulse A to serve as soon as it returns.
+                    want = "a" if (ball_gone // 3) % 2 == 0 else None
+                if want != held:
                     if held:
                         a.release(held)
-                        held = None
-                    a.press("a", 10)
+                    if want:
+                        a.hold(want)
+                    held = want
+                a.step(1)
             else:
                 ball_gone = 0
                 box["ball"] = None if st.dx is None else (st.dx, st.ball_y, ball_vy)
                 box["item"] = None if (st.item_dx is None or st.item_y is None) else (st.item_dx, st.item_y, item_vy)
-                with lock:
-                    want, p, spikes = box["want"] or held, box["p"], box["spikes"]
+                if fly is not None:
+                    db = args.base + object_demand(st.ball_y, ball_vy, st.dx,
+                                                   stake=STAKE_BALL, size_weight=args.size_weight)
+                    if args.items and st.item_dx is not None:
+                        di = object_demand(st.item_y, item_vy, st.item_dx,
+                                           stake=args.item_stake, diagonal=args.item_diagonal)
+                        f = fly.step(st.dx, db, st.item_dx, di, cap=args.cap)
+                    else:
+                        f = fly.step(st.dx, db, None, None, cap=args.cap)
+                    p = float(readout.predict(f))
+                    want = "right" if p >= 0.5 else "left"
+                    spikes = int(brain.fired.size)
+                else:
+                    with lock:
+                        want, p, spikes = box["want"] or held, box["p"], box["spikes"]
                 if want != held:
                     if held:
                         a.release(held)

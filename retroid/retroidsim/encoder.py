@@ -179,6 +179,90 @@ def dn_features_chase2(brain, dx_a: float | None, drive_a: float | None,
     return f
 
 
+class ContinuousChase:
+    """A brain that is never reset: one step per game frame.
+
+    `dn_features_chase2` resets the brain and runs 8 steps for every decision (a
+    160 ms window, ~50 ms on CPU), which is too slow for a 60 fps frame, so the fly
+    runs in a thread at ~19 decisions/s. Here the network keeps its recurrent state
+    and advances a single step per frame (~4 ms), which fits inside a frame, so the
+    fly can decide every frame at the game's own rate. The features are the same
+    descending-neuron trace; only the readout differs, since it must be trained on
+    this regime (see `train_continuous_readout`). Over a few thousand steps the
+    network does not drift: the spike count and the trace sit on a steady level, so
+    the noise does not drown the signal.
+    """
+
+    def __init__(self, brain, tau: float = 0.1):
+        self.brain = brain
+        self.det = FeatureDetectors(brain)
+        self.trace = Trace(brain, types=["descending_neuron"], tau=tau)
+        brain.reset(seed=0)
+
+    def _inject(self, dx_a, drive_a, dx_b, drive_b, cap):
+        """Both objects into the chase channel (`cells["chase"]`), by side, capped.
+        Same layout `FeatureDetectors.inject` returns, so `brain.step` consumes it."""
+        dl = dr = 0.0
+        for dx, drive in ((dx_a, drive_a), (dx_b, drive_b)):
+            if dx is None or drive is None:
+                continue
+            d = min(max(float(drive), 0.0), cap)
+            if dx < 0:
+                dl += d
+            else:
+                dr += d
+        inj = []
+        if dl > 0:
+            inj.append((self.det.cells["chase"]["L"], np.float32(dl)))
+        if dr > 0:
+            inj.append((self.det.cells["chase"]["R"], np.float32(dr)))
+        return inj
+
+    def step(self, dx_a: float | None = None, drive_a: float | None = None,
+             dx_b: float | None = None, drive_b: float | None = None,
+             cap: float = DRIVE_CAP) -> np.ndarray:
+        """One step: inject both objects' drives and return the DN trace features."""
+        return self.trace.observe(self.brain.step(inject=self._inject(dx_a, drive_a, dx_b, drive_b, cap)))
+
+
+def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight: float = 0.1,
+                             item_stake: float = 0.8, diagonal: bool = False, with_item: bool = True,
+                             steps: int = 2500, burn: int = 200, seed: int = 0) -> Readout:
+    """Fit the readout for `ContinuousChase` on one long, uninterrupted run.
+
+    The brain is stepped without resetting over a slow random walk of the ball and
+    the item (as in play), so the trace carries the same history it will see at run
+    time; each step is labelled by the side of whichever drive is larger, as in the
+    per-decision trainer. Only the sampling differs: the readout sees a sliding
+    window instead of a fresh 8-step response, which is why it needs its own fit.
+    """
+    rng = np.random.default_rng(seed)
+    fly = ContinuousChase(brain)
+    by, bvy = 80.0, 0.0
+    iy, ivy = 120.0, 0.5
+    bdx = idx = 0.0
+    have_item = with_item
+    X, y = [], []
+    for t in range(steps):
+        bdx = float(np.clip(bdx + rng.normal(0.0, 6.0), -80.0, 80.0))
+        idx = float(np.clip(idx + rng.normal(0.0, 6.0), -80.0, 80.0))
+        by = float(np.clip(by + bvy, 50.0, 132.0))
+        bvy = float(np.clip(bvy + rng.normal(0.0, 0.5), -2.0, 2.0))
+        iy = float(np.clip(iy + ivy, 50.0, 132.0))
+        ivy = float(np.clip(ivy + rng.normal(0.0, 0.2), 0.2, 1.0))
+        if rng.random() < 0.02:               # start a fresh situation now and then
+            by, bvy = rng.uniform(50.0, 85.0), rng.uniform(-2.0, 0.0)
+            iy, ivy = rng.uniform(50.0, 132.0), rng.uniform(0.3, 1.0)
+            have_item = with_item and rng.random() > 0.25
+        db = base + object_demand(by, bvy, bdx, stake=STAKE_BALL, size_weight=size_weight)
+        di = object_demand(iy, ivy, idx, stake=item_stake, diagonal=diagonal) if have_item else 0.0
+        f = fly.step(bdx, db, idx if have_item else None, di if have_item else None, cap=cap)
+        if t >= burn:
+            X.append(f)
+            y.append(int((idx if di > db else bdx) > 0))
+    return Readout.fit(np.stack(X), np.array(y), kind="logistic")
+
+
 def train_readout(brain, span: float = 80.0, samples: int = 33, verbose: bool = False) -> Readout:
     """Fit a left/right readout on a sweep of ball offsets, labelled by side.
 

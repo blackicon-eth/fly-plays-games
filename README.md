@@ -61,7 +61,7 @@ the same brain, front end, readout and reflex.
 | Game | Folder | Status | What the fly does |
 | --- | --- | --- | --- |
 | Pokémon Red | [`pokemon-red/`](pokemon-red/README.md) | done | reacts to the screen; the long walk is a scripted teacher |
-| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | keeps the ball alive with the paddle; ablations show the wiring, not the weights, carries the signal, and a two-signal conflict shows it prioritises the ball by wiring |
+| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | keeps the ball alive with the paddle; ablations show the wiring, not the weights, carries the signal, a two-signal conflict shows it prioritises the ball by wiring, and the live demo runs the connectome one step per frame at 60 fps |
 
 ## What is real, and what is not
 

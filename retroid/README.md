@@ -29,7 +29,8 @@ It fits the fly far better than Pokémon does:
 The Game Boy draws the ball and paddle as hardware sprites, so the adapter reads
 them from the OAM table at `$FE00` instead of reverse-engineering WRAM. Each of
 the 40 slots is four bytes `(screen y, screen x, tile, attributes)`; Retroid keeps
-the **ball in tile `$00`** and the **three-tile paddle in tiles `$01`–`$03`**. The
+the **ball in tile `$00`** and the **paddle in tiles `$01`–`$03`** (plus the power-up
+forms `$04`/`$05` and `$1B`–`$20`, so a transformed paddle is still found). The
 adapter finds them by tile, so it does not care about the slot order. Everything
 else is the shared pipeline:
 
@@ -204,6 +205,42 @@ and shuffled connectomes agree on almost every frame -- most of this decision is
 drive, not the connectome. The connectome-owned part is the static pathway priority
 above.
 
+## The live demo: running the brain at the game's own rate
+
+`play_live.py` is the interactive version. A decision costs eight connectome steps
+(~50 ms on CPU), so the brain decides ~19 times a second while the Game Boy runs at
+60 fps. There are two ways to bridge that gap:
+
+* **Threaded (default).** The brain runs in a background thread and the main loop
+  ticks the emulator at its own pace, reading the latest decision. It works, but the
+  paddle follows an answer that refreshes every few frames, so above ~20 fps it is
+  always a couple of frames behind the ball. `--fps` caps the loop exactly, with a
+  relative per-frame sleep (no 60 fps catch-up burst) and PyBoy's own throttle off.
+* **Continuous (`--continuous`).** Never reset the brain: keep its recurrent state
+  and take **one step per frame** (~4 ms, well inside a 60 fps frame). A readout is
+  then fit on one long continuous run. The question was whether the noise makes the
+  network drift; it does not.
+
+Over a 3000-step continuous run the spike count and the descending-neuron trace sit
+on a steady level -- no drift, no runaway -- and a readout trained on one segment
+decides another at 98% (AUC 0.945, against 1.000 for the fresh 8-step response). In
+the game the two modes are equivalent at 60 fps (mean |dx| 8.5 vs 9.5 px, three balls
+lost in each of two runs), but the continuous one runs inline at the game's own rate.
+
+With `--items` the live demo puts the ball and falling item on the same chase channel
+and trains the readout to follow whichever asks for more (see "Two signals"), so the
+urgency arbitration can be watched in real time. The drive weights are `--base 0.8`
+(a constant tracking drive for the ball, so it stays tracked when safe), `--size-weight
+0.1` (the ball's urgency is imminence, not proximity), `--item-stake 0.8`, and
+`--item-diagonal` (the item's distance is the straight line from the paddle, so a far
+one looms less).
+
+Be clear about the split. The **brain** only picks left/right during a rally.
+Launching the ball, mashing A through a GAME OVER or a menu, and driving right to a
+cleared level's exit are hand-written scaffolding in `play_live.py`, not the
+connectome. The drives and their weights are our choices too; the brain is the
+channel they run through.
+
 ## Running it
 
 The ROM is free from the author's itch.io page and is **not committed**. Put it at
@@ -211,6 +248,8 @@ The ROM is free from the author's itch.io page and is **not committed**. Put it 
 
 ```sh
 python retroid/play_live.py --scale 4                  # watch it, with a window
+python retroid/play_live.py --scale 4 --fps 40 --items # live, also chasing the falling item
+python retroid/play_live.py --scale 4 --continuous     # one connectome step per frame, 60 fps
 python retroid/render/record_fly.py --steps 1200       # record a run to render/fly_drive.npz
 python retroid/render/render_fly.py                    # render that npz to media/retroid_fly.mp4
 python retroid/render/record_fly.py --ablate shuffle   # the control condition
@@ -234,7 +273,9 @@ python retroid/render/render_fly.py --input render/conflict_play.npz --start 790
 * **Power-ups.** The falling capsule is a *second* decision (chase the ball or the
   bonus). The tracking runs ignore it; the "Two signals" section above studies it
   directly, with the item's urgency supplied by the encoder rather than measured
-  from pixels.
+  from pixels. A power-up can also change the paddle's *graphic*; the adapter reads
+  those tiles too (`$04`/`$05`, `$1B`–`$20`), which used to make `paddle_x` return
+  `None` and freeze the fly mid-level.
 * **Levels with enemies or multiple balls** are out of reach.
 * **Sprite identification** assumes the ball stays tile `$00`; a level that
   reuses that tile for something else would confuse the adapter.
