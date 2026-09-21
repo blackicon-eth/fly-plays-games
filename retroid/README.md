@@ -127,51 +127,82 @@ against 2344 for the scripted tracker.)
 
 ## Two signals: the ball against a falling item
 
-The single-reflex tests above show the connectome's *weights* are not necessary
-for a one-dimensional task. So here is a conflict. The ball drives the chase channel
-(`opp` → LC10a), a falling item drives the projectile channel (`shots` → LPLC1),
-and both are injected at once, on opposite sides. The readout is trained only on
-**single-object** trials (ball alone, item alone), so it never sees a conflict:
-whatever it does when both are present is the connectome arbitrating.
-
-`render/conflict.py` sweeps the item's angular size (its urgency):
-
-![Two-signal conflict: P(right) as the item grows, for the real connectome and with shuffled weights](media/conflict.png)
-
-* **Real connectome.** Small items lose and the ball is followed. Past a size of
-  about 10 the item wins and the fly abandons the ball. The effect is **lateral**:
-  it only happens when the ball is on the right; with the ball on the left the
-  item never wins.
-* **Weights shuffled.** The item never wins at any size; the fly stays on the ball.
-  The side is still decodable, so the network still works, just with a different
-  arbitration.
-* **Topology rewired.** Every neuron keeps the same number of incoming connections,
-  but they now come from random neurons. The readout can no longer tell left from
-  right **at all** (the output is a flat 0.48). So the left/right information lives
-  in the **wiring**, while the arbitration is shaped by the weights.
-
-So the wiring *does* matter. Rewiring the graph destroys the signal entirely, and
-even scrambling only the weights changes the arbitration and its left/right
-asymmetry. Together with the survival test, this is where damaging the connectome
-changes the outcome.
-
-The same thing happens in the game loop (`render/record_conflict.py`, the ball into
-`opp`, the item into `shots`, readout trained on single objects only). When the ball
-drifts far and an item falls on the other side, the fly abandons the ball for the
-item, and catches it:
+The single-reflex tests above show the connectome's *weights* are not necessary for
+a one-dimensional task. So here is a conflict: the ball and a falling item appear at
+once, on opposite sides, and the fly has to pick one.
 
 ![The fly abandoning the ball for a falling item](media/retroid_conflict.gif)
 
-In one 3000-frame run it followed the item on 96 conflict frames and the ball on 65.
-But two separate runs diverge, so `render/conflict_paired.py` evaluates both
-readouts on the **same** (ball dx, item dx): on 161 conflict frames the real
-connectome follows the item **60%** of the time and the shuffled one **16%**, and
-they disagree on **44%** of them. The item wins more in-game than in the size sweep
-above because it is injected *growing* as it falls, which carries it past the size
-where it out-competes the ball. The choices are always bang-bang frame to frame, so
-this is a statistic, not a sustained decision. Caveats: this is a probe and a demo,
-not a benchmark; the numbers depend on the encoder's growth rate and on the readout's
-training.
+### The readout's "choice" was an offset
+
+The first version drove the ball through the chase channel (`opp` → LC10a) and the
+item through the projectile channel (`shots` → LPLC1), with the readout trained only
+on single-object trials so that it never saw a conflict. `render/conflict_paired.py`
+evaluates a real and a shuffled readout on the **same** states; on 161 conflict frames
+the real one appeared to follow the item **60%** of the time against the shuffled one's
+16%, and they disagreed on 44%. Two probes say that number is not what it looks like:
+
+* **Channel swap** (`--swap`). Putting the ball on `shots` and the item on `opp` gives
+  the *identical* trajectory (161 conflicts, item 60%). The choice is not the channel
+  assignment.
+* **Mirror test.** A single object is nearly antisymmetric (`p(+60)=0.96`,
+  `p(-60)≈0`); the two-object conflict is **not** -- mirroring both offsets still
+  leaves the answer on the left (residual -0.42). That is a **constant offset**, not a
+  lateral bias.
+
+The offset is the readout's intercept (`b = -0.42`, so the no-object answer is
+`p = 0.41`, left), and it comes from the connectome: the descending-neuron population
+is not left/right symmetric. With two opposing objects their contributions cancel and
+the offset decides. "The fly chose the item 60%" was really "the offset happens to
+point at the item". This is also why an earlier one-dimensional size sweep looked
+lateral (below): it was the offset plus a weak drive. With the default front end the
+chase drive pins at its cap, so the object's size barely moves the trace --
+`chase_base` and `chase_gain` saturate it into a near-binary signal.
+
+![An earlier one-dimensional sweep of P(right) as the item grows](media/conflict.png)
+
+### What the connectome does by itself
+
+Decode the descending neurons with a *fixed, untrained* rule -- sum of left DNs minus
+right DNs (`--innate`) -- and the ball wins **98%** of conflicts. The chase pathway
+(LC10a → DN) is about four times stronger than the projectile pathway (LPLC1 → DN), so
+the ball is prioritised by **wiring**. That arbitration is the connectome's own.
+
+### A fair conflict: one channel, physical urgency
+
+To compare the two objects on equal footing, route *both* through the chase channel
+(`--chase2`) and let a **physical urgency** set each one's drive. `object_demand`
+(`retroidsim/encoder.py`) scores an object by proximity × imminence: angular size is
+`k / dist`, loom rate is `size / t_arrive` (zero while the object ascends), boosted
+when the paddle cannot cover `|dx|` in time. Those are the quantities a loom detector
+(LPLC2) responds to, so the front end is doing the eye's job; the only non-sensory
+part is `stake` -- that the ball is worth more than the item is Arkanoid's rule, not
+biology.
+
+With the real connectome and the innate decoder, across four starting scenes, the more
+urgent the ball the more the fly follows it rather than the item:
+
+| ball demand | follows item (four scenes) |
+| --- | --- |
+| low (ball safe) | 60 / 74 / 57 / 81 % |
+| mid | 56 / 43 / 36 / 22 % |
+| high (ball urgent) | 12 / 24 / 12 / 1 % |
+
+Every scene is monotone: an urgent ball is followed (~88% of frames), a safe ball is
+abandoned for the item (~68%). Bucketed by the ball's screen height alone the same
+split is **not** monotone (e.g. 17 / 78 / 80 %): an object low but ascending is not
+urgent, and only including direction and speed makes the relation clean.
+
+The fly then does catch the item. Over the four runs 11 items fell (ignoring 5
+sprite-animation gaps) and it collected **5 (45%)** -- always when the ball was safe
+and with the paddle under the item; the misses are mostly items on the right, because
+the connectome's left lean parks the paddle left of centre.
+
+Caveat: this is a probe, not a benchmark; the numbers depend on the encoder's
+constants and on the choice of `stake`. And with the drive supplied (`--solo`) the real
+and shuffled connectomes agree on almost every frame -- most of this decision is the
+drive, not the connectome. The connectome-owned part is the static pathway priority
+above.
 
 ## Running it
 
@@ -190,6 +221,9 @@ python retroid/render/conflict.py --ablate shuffle      # weights scrambled
 python retroid/render/conflict.py --ablate rewire       # topology scrambled
 python retroid/render/record_conflict.py --steps 3000   # the conflict in the game loop
 python retroid/render/conflict_paired.py --steps 2500   # both readouts on the same states
+python retroid/render/conflict_paired.py --steps 2500 --innate           # fixed L-R decoder: the ball wins by wiring
+python retroid/render/conflict_paired.py --steps 2500 --chase2 --urgency # one channel + physical urgency
+python retroid/render/conflict_paired.py --chase2 --urgency --scene level1_c --solo  # one scene, real only
 python retroid/render/render_fly.py --input render/conflict_play.npz --start 790 --end 1030
 ```
 
@@ -197,8 +231,10 @@ python retroid/render/render_fly.py --input render/conflict_play.npz --start 790
 
 * **Ball speed.** The ball moves up to 3 px/frame and the paddle 2 px/frame, so
   the tracking is a real control problem, not a formality. The fly holds up here.
-* **Power-ups.** A falling capsule is a *second* decision (chase the ball or the
-  bonus) and is outside a single reflex; the current runs ignore them.
+* **Power-ups.** The falling capsule is a *second* decision (chase the ball or the
+  bonus). The tracking runs ignore it; the "Two signals" section above studies it
+  directly, with the item's urgency supplied by the encoder rather than measured
+  from pixels.
 * **Levels with enemies or multiple balls** are out of reach.
 * **Sprite identification** assumes the ball stays tile `$00`; a level that
   reuses that tile for something else would confuse the adapter.

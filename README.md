@@ -61,7 +61,7 @@ the same brain, front end, readout and reflex.
 | Game | Folder | Status | What the fly does |
 | --- | --- | --- | --- |
 | Pokémon Red | [`pokemon-red/`](pokemon-red/README.md) | done | reacts to the screen; the long walk is a scripted teacher |
-| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | keeps the ball alive with the paddle; ablations show the wiring, not the weights, carries the signal |
+| Retroid (Arkanoid) | [`retroid/`](retroid/README.md) | working | keeps the ball alive with the paddle; ablations show the wiring, not the weights, carries the signal, and a two-signal conflict shows it prioritises the ball by wiring |
 
 ## What is real, and what is not
 
@@ -72,6 +72,10 @@ the same brain, front end, readout and reflex.
   It can do fast, hard-wired sensorimotor reflexes -- looming, escape, target
   tracking -- but it cannot hold a map or learn the delayed-reward structure a game
   like Pokémon needs.
+* The visual front end stands in for the **eyes**: it supplies sensory quantities
+  (an object's position, size and loom rate) to the fly's own visual projection
+  neurons. When a game's object has to *matter* -- a ball is a life, a bonus is not --
+  that translation is ours, and it is stated per game.
 
 Each game's README has its own video, measurements and caveats.
 
