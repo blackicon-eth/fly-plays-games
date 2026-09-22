@@ -123,6 +123,8 @@ def main() -> None:
                     help="how much the item's demand counts (bigger = the item wins from higher up)")
     ap.add_argument("--item-diagonal", action="store_true",
                     help="item distance = straight line paddle-item, so a far one looms less")
+    ap.add_argument("--vx-gain", type=float, default=0.0,
+                    help="add a drive on the side the ball is moving toward (px/frame of vx); 0 = off")
     ap.add_argument("--volume", type=int, default=40, help="game sound volume, 0-100")
     ap.add_argument("--exit-after", type=int, default=24,
                     help="frames without a live ball after which the level is assumed cleared and the fly drives right")
@@ -156,12 +158,14 @@ def main() -> None:
         # item-in-the-regime readout tracks the ball well whether or not an item shows.
         readout = train_continuous_readout(brain, base=args.base, cap=args.cap,
                                            size_weight=args.size_weight, item_stake=args.item_stake,
-                                           diagonal=args.item_diagonal, with_item=True)
-        fly = ContinuousChase(brain)     # fresh state for the live run
+                                           diagonal=args.item_diagonal, with_item=True,
+                                           vx_gain=args.vx_gain)
+        fly = ContinuousChase(brain, vx_gain=args.vx_gain)     # fresh state for the live run
         print(f"decoder: continuous brain, one step per frame (AUC {readout.cv_score:.3f}); "
               f"ball drive = base {args.base:g} + urgency (size weight {args.size_weight:g}), "
               f"item drive = urgency (stake {args.item_stake:g}"
-              f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}", flush=True)
+              f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}"
+              f"{', vx gain %g' % args.vx_gain if args.vx_gain else ''}", flush=True)
     elif args.items:
         readout = train_items_readout(brain, base=args.base, cap=args.cap,
                                       size_weight=args.size_weight, item_stake=args.item_stake,
@@ -311,9 +315,9 @@ def main() -> None:
                     if args.items and st.item_dx is not None:
                         di = object_demand(st.item_y, item_vy, st.item_dx,
                                            stake=args.item_stake, diagonal=args.item_diagonal)
-                        f = fly.step(st.dx, db, st.item_dx, di, cap=args.cap)
+                        f = fly.step(st.dx, db, st.item_dx, di, cap=args.cap, vx_a=ball_vx)
                     else:
-                        f = fly.step(st.dx, db, None, None, cap=args.cap)
+                        f = fly.step(st.dx, db, None, None, cap=args.cap, vx_a=ball_vx)
                     p = float(readout.predict(f))
                     want = "right" if p >= 0.5 else "left"
                     spikes = int(brain.fired.size)

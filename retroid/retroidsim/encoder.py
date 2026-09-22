@@ -53,6 +53,7 @@ URGENCY_TAU = 20.0        # demand -> drive saturation
 DRIVE_CAP = 2.0           # most drive a single object can ask for
 STAKE_BALL, STAKE_ITEM = 1.0, 0.3   # losing the ball costs a life; an item is a bonus
 PADDLE_Y = 136.0
+VX_GAIN = 0.4             # drive added on the side an object is moving toward, per px/frame of `vx`
 
 
 def object_demand(y: float | None, vy: float | None, dx: float | None = None,
@@ -138,11 +139,18 @@ def dn_features_pair(brain, dx_ball: float | None, dx_item: float | None,
 
 def dn_features_chase2(brain, dx_a: float | None, drive_a: float | None,
                        dx_b: float | None, drive_b: float | None,
-                       cap: float = DRIVE_CAP, steps: int = BRAIN_STEPS) -> np.ndarray:
+                       cap: float = DRIVE_CAP, steps: int = BRAIN_STEPS,
+                       vx_a: float | None = None, vx_b: float | None = None,
+                       vx_gain: float = 0.0) -> np.ndarray:
     """Both objects drive the *same* chase channel (LC10a) on their side, with a
     drive set by the caller. Neither pathway is privileged, so the winner is the
     object that asks for more -- feed `object_demand(y, vy, dx, stake)` and the
     more urgent object wins.
+
+    `vx` is the object's horizontal velocity (px/frame), a visible motion. With
+    `vx_gain > 0` it adds a separate drive on the side the object is *moving*
+    toward, alongside the position drive on the side it *is*. This is only the
+    present velocity, not an extrapolation: nothing about the future is computed.
 
     The default `FeatureDetectors.inject` takes only one opponent, so the drive is
     built here directly from `cells["chase"]`; the format matches what `inject`
@@ -151,15 +159,7 @@ def dn_features_chase2(brain, dx_a: float | None, drive_a: float | None,
     brain.reset(seed=0)
     det = FeatureDetectors(brain)
     trace = Trace(brain, types=["descending_neuron"], tau=0.1)
-    dl = dr = 0.0
-    for dx, drive in ((dx_a, drive_a), (dx_b, drive_b)):
-        if dx is None or drive is None:
-            continue
-        d = min(max(float(drive), 0.0), cap)
-        if dx < 0:
-            dl += d
-        else:
-            dr += d
+    dl, dr = _sides(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b, vx_gain)
     inj = []
     if dl > 0:
         inj.append((det.cells["chase"]["L"], np.float32(dl)))
@@ -169,6 +169,32 @@ def dn_features_chase2(brain, dx_a: float | None, drive_a: float | None,
     for _ in range(steps):
         f = trace.observe(brain.step(inject=inj))
     return f
+
+
+def _sides(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b, vx_gain):
+    """Per-side drive: each object contributes on its position side, and (with
+    `vx_gain > 0`) a separate term on the side of its present horizontal motion."""
+    dl = dr = 0.0
+    for dx, drive in ((dx_a, drive_a), (dx_b, drive_b)):
+        if dx is None or drive is None:
+            continue
+        d = min(max(float(drive), 0.0), cap)
+        if dx < 0:
+            dl += d
+        else:
+            dr += d
+    if vx_gain:
+        for vx in (vx_a, vx_b):
+            if vx is None:
+                continue
+            m = min(abs(float(vx)) * vx_gain, cap)
+            if m <= 0.0:
+                continue
+            if vx < 0:
+                dl += m
+            else:
+                dr += m
+    return dl, dr
 
 
 class ContinuousChase:
@@ -185,24 +211,17 @@ class ContinuousChase:
     the noise does not drown the signal.
     """
 
-    def __init__(self, brain, tau: float = 0.1):
+    def __init__(self, brain, tau: float = 0.1, vx_gain: float = 0.0):
         self.brain = brain
         self.det = FeatureDetectors(brain)
         self.trace = Trace(brain, types=["descending_neuron"], tau=tau)
+        self.vx_gain = vx_gain
         brain.reset(seed=0)
 
-    def _inject(self, dx_a, drive_a, dx_b, drive_b, cap):
+    def _inject(self, dx_a, drive_a, dx_b, drive_b, cap, vx_a=None, vx_b=None):
         """Both objects into the chase channel (`cells["chase"]`), by side, capped.
         Same layout `FeatureDetectors.inject` returns, so `brain.step` consumes it."""
-        dl = dr = 0.0
-        for dx, drive in ((dx_a, drive_a), (dx_b, drive_b)):
-            if dx is None or drive is None:
-                continue
-            d = min(max(float(drive), 0.0), cap)
-            if dx < 0:
-                dl += d
-            else:
-                dr += d
+        dl, dr = _sides(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b, self.vx_gain)
         inj = []
         if dl > 0:
             inj.append((self.det.cells["chase"]["L"], np.float32(dl)))
@@ -212,14 +231,17 @@ class ContinuousChase:
 
     def step(self, dx_a: float | None = None, drive_a: float | None = None,
              dx_b: float | None = None, drive_b: float | None = None,
-             cap: float = DRIVE_CAP) -> np.ndarray:
+             cap: float = DRIVE_CAP, vx_a: float | None = None,
+             vx_b: float | None = None) -> np.ndarray:
         """One step: inject both objects' drives and return the DN trace features."""
-        return self.trace.observe(self.brain.step(inject=self._inject(dx_a, drive_a, dx_b, drive_b, cap)))
+        inj = self._inject(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b)
+        return self.trace.observe(self.brain.step(inject=inj))
 
 
 def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight: float = 0.1,
                              item_stake: float = 0.8, diagonal: bool = False, with_item: bool = True,
-                             steps: int = 2500, burn: int = 200, seed: int = 0) -> Readout:
+                             steps: int = 2500, burn: int = 200, seed: int = 0,
+                             vx_gain: float = 0.0) -> Readout:
     """Fit the readout for `ContinuousChase` on one long, uninterrupted run.
 
     The brain is stepped without resetting over a slow random walk of the ball and
@@ -229,14 +251,17 @@ def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_we
     window instead of a fresh 8-step response, which is why it needs its own fit.
     """
     rng = np.random.default_rng(seed)
-    fly = ContinuousChase(brain)
+    fly = ContinuousChase(brain, vx_gain=vx_gain)
     by, bvy = 80.0, 0.0
     iy, ivy = 120.0, 0.5
     bdx = idx = 0.0
+    bvx = 0.0
     have_item = with_item
     X, y = [], []
     for t in range(steps):
+        prev_bdx = bdx
         bdx = float(np.clip(bdx + rng.normal(0.0, 6.0), -80.0, 80.0))
+        bvx = 0.0 if t == 0 else bdx - prev_bdx
         idx = float(np.clip(idx + rng.normal(0.0, 6.0), -80.0, 80.0))
         by = float(np.clip(by + bvy, 50.0, 132.0))
         bvy = float(np.clip(bvy + rng.normal(0.0, 0.5), -2.0, 2.0))
@@ -248,7 +273,8 @@ def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_we
             have_item = with_item and rng.random() > 0.25
         db = base + object_demand(by, bvy, bdx, stake=STAKE_BALL, size_weight=size_weight)
         di = object_demand(iy, ivy, idx, stake=item_stake, diagonal=diagonal) if have_item else 0.0
-        f = fly.step(bdx, db, idx if have_item else None, di if have_item else None, cap=cap)
+        f = fly.step(bdx, db, idx if have_item else None, di if have_item else None,
+                     cap=cap, vx_a=bvx)
         if t >= burn:
             X.append(f)
             y.append(int((idx if di > db else bdx) > 0))
