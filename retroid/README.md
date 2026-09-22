@@ -186,6 +186,21 @@ play: in ball-only runs it raised `mean |dx|` from 8.3 to 14.7 px across four sc
 over-committing the paddle to laterally distant balls. It was removed, so the drive
 above is now purely sensory. (The numbers below were measured while it was still in.)
 
+Removing it had a second, larger cost we only measured later: the reach factor was
+also what let the fly commit to a **far** item. By boosting an unreachable object's
+urgency it gave the paddle a head start, and that is how the item catches below (5 of
+11) happened. Without it, a laterally distant item's purely sensory urgency does not
+beat the ball's constant `base` drive until the item is already too close to reach at
+2 px/frame, so the fly almost never chooses it. Measured on the current code: the live
+`--items` demo and the `conflict_paired --chase2 --urgency` probe both collect **0**
+items, in every configuration we tried (continuous or threaded, `--vx-gain` on or off,
+`--base` 0.0-0.8, `--item-stake` up to 2.0). Re-adding the reach factor restores a few
+catches (1 of 2 drops in the probe, 1 in a 3000-frame live run) but drags ball tracking
+back down (`mean |dx|` 9.1 -> 12.8 px, losses 7 -> 9). The item is therefore a rare
+bonus the fly mostly ignores, not a decision it can make on sensation alone -- the same
+boundary as the bounce, where the signal that would help is a fact about the actor, not
+the world.
+
 With the real connectome and the innate decoder, across four starting scenes, the more
 urgent the ball the more the fly follows it rather than the item:
 
@@ -246,6 +261,39 @@ Launching the ball, mashing A through a GAME OVER or a menu, and driving right t
 cleared level's exit are hand-written scaffolding in `play_live.py`, not the
 connectome. The drives and their weights are our choices too; the brain is the
 channel they run through.
+
+## Where the fly ends: anticipation is not prediction
+
+The fast diagonal ball that bounces off a wall is the fly's hard case. It is not a
+tuning problem, and it is not the readout's smoothing; it is a **boundary**, and we
+accept it. The fly is a pursuer: it moves to where the ball *is*. A human moves to
+where the ball *will be*, because they understand the rule (the ball reflects off
+the wall). That is model-based prediction, and we do not inject it.
+
+We measured the difference with a moving stimulus into the same chase channel and
+cross-correlating the descending-neuron steering with the stimulus (negative lag =
+the command *ahead* of the stimulus):
+
+| stimulus | command lag, motion drive off | motion drive on |
+| --- | --- | --- |
+| smooth sweep (sinusoid) | +7 frames | **-4 frames** |
+| wall bounce (discontinuity) | **+28 frames** | +11 frames |
+
+Two things fall out. First, the connectome **does** anticipate smooth motion: the
+ball's horizontal velocity pushes the command a few frames *ahead* of the ball's
+position, a phase advance of about 11 frames. It is not a predictor we wrote; it is
+the connectome using a velocity sensation. Second, it can never anticipate a
+**bounce**. A bounce is a discontinuity -- the velocity reverses in a single frame --
+so there is no information before it, and the command arrives ~11 frames after (the
+brain's 0.1 s membrane constant plus the readout's 0.1 s trace). At 2 px/frame for
+the paddle against up to 4 px/frame for the ball, 11 frames is ~22 px of head start
+lost, and the ball is gone.
+
+So the missing piece is not a better encoder. Every attempt we made -- a stronger
+velocity drive, a retinotopic azimuth map, a second pathway -- improved the
+*sensation*, and none could supply the missing *model of the game*. A connectome has
+senses, not rules. Anticipating smooth motion is a reflex; anticipating a bounce is
+understanding, and that is exactly the line the ethos keeps us on the fly's side of.
 
 ## Running it
 
