@@ -33,6 +33,12 @@ OAM_BASE = 0xFE00
 OAM_SLOTS = 40
 SCREEN_W, SCREEN_H = 160, 144
 
+# WRAM byte where the game keeps the current stage number. Stage 21 is the boss
+# (the author confirmed it); freezing this address there -- see
+# `RetroidAdapter.stage` -- starts and stays on the boss without the menu cheat.
+STAGE_ADDR = 0xC4B1
+BOSS_STAGE = 21
+
 BALL_TILE = 0x00
 # Normal paddle ($01-$03: left, middle, right) plus every transformed form seen in
 # play -- a middle/right swap ($04/$05) and two three-tile sets ($1B-$1D, $1E-$20)
@@ -100,11 +106,15 @@ class RetroidAdapter:
     """
 
     def __init__(self, rom: str | Path = DEFAULT_ROM, scenes_dir: str | Path | None = None,
-                 window: str = "null", scale: int = 3, sound_volume: int = 100):
+                 window: str = "null", scale: int = 3, sound_volume: int = 100,
+                 stage: int | None = None):
         self.rom = Path(rom)
         if not self.rom.exists():
             raise FileNotFoundError(f"no ROM at {self.rom}; see README.md")
         self.scenes_dir = Path(scenes_dir) if scenes_dir else SCENES_DIR
+        # When set, every step rewrites `STAGE_ADDR` so the game cannot advance past
+        # this stage -- used to park on the boss (`stage=21`).
+        self.stage = None if stage is None else int(stage)
         self.pb = pyboy.PyBoy(str(self.rom), window=window, scale=scale, sound_volume=sound_volume)
         self._ball_hist: deque = deque(maxlen=8)   # recent ball positions, for `ball_live`
 
@@ -167,6 +177,8 @@ class RetroidAdapter:
 
     def step(self, frames: int = 1) -> None:
         for _ in range(frames):
+            if self.stage is not None:
+                self.pb.memory[STAGE_ADDR] = self.stage
             self.pb.tick(1)
             self._ball_hist.append(self.ball())
 
@@ -239,10 +251,18 @@ class RetroidAdapter:
         """Send the ball up off the paddle."""
         self.press("a", hold)
 
-    def reset_to_play(self, name: str = "level1", force: bool = False) -> RetroidState:
-        """Return to the level 1 start, navigating and bookmarking it once."""
+    def reset_to_play(self, name: str = "level1", force: bool = False,
+                      stage: int | None = None) -> RetroidState:
+        """Return to the level start, navigating and bookmarking it once.
+
+        `stage` freezes the game on that stage number while navigating (21 = boss).
+        The frozen byte is saved in the scene, so pass the same `stage` to the
+        adapter during play to keep the freeze.
+        """
         if self.has_scene(name) and not force:
             return self.load_scene(name)
+        if stage is not None:
+            self.stage = int(stage)
         self._navigate_intro()
         self.save_scene(name)
         return self.state()
@@ -268,6 +288,17 @@ class RetroidAdapter:
                 break
         if appeared is None:
             raise RuntimeError("opening did not reach the level; is this the right ROM?")
+        # The paddle can still be sliding in when the sprites first appear (the boss
+        # intro runs longer than level 1's), so wait until it has been still for a
+        # moment: a launch before that is ignored and the scene would be mid-slide.
+        stable, last = 0, None
+        for _ in range(4000):
+            self.step(1)
+            px = self.paddle_x()
+            stable = stable + 1 if px == last else 0
+            last = px
+            if stable >= 30:
+                break
         if self.ball() is None:
             raise RuntimeError("the ball is not resting on the paddle after the opening")
 

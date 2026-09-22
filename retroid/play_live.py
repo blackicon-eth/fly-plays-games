@@ -131,6 +131,8 @@ def main() -> None:
     ap.add_argument("--continuous", action="store_true",
                     help="never reset the brain: one connectome step per frame (fits 60 fps) instead of the threaded 8-step decisions")
     ap.add_argument("--scene", default=None, help="start from a saved mid-flight scene (e.g. level1_c)")
+    ap.add_argument("--stage", type=int, default=None,
+                    help="freeze the game on this stage number every frame (21 = boss); use with --make-scene boss and --scene boss")
     ap.add_argument("--log-losses", action="store_true",
                     help="at each ball loss, record the last live ball state (dx, vx, vy, y, p) and print a summary")
     ap.add_argument("--headless", action="store_true", help="run without a window (tests); throttled to --fps")
@@ -141,8 +143,9 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.make_scene:
-        a = RetroidAdapter(rom=args.rom, window="SDL2", scale=args.scale, sound_volume=args.volume)
-        a.reset_to_play(name=args.make_scene, force=True)
+        a = RetroidAdapter(rom=args.rom, window="SDL2", scale=args.scale, sound_volume=args.volume,
+                           stage=args.stage)
+        a.reset_to_play(name=args.make_scene, force=True, stage=args.stage)
         print("saved", a.scene_path(args.make_scene))
         a.close()
         return
@@ -215,7 +218,7 @@ def main() -> None:
         brain_thread.start()
 
     a = RetroidAdapter(rom=args.rom, window="null" if args.headless else "SDL2",
-                       scale=args.scale, sound_volume=args.volume)
+                       scale=args.scale, sound_volume=args.volume, stage=args.stage)
     # PyBoy's own real-time throttle also sleeps, so it stacks with the per-frame cap
     # below and a "40 fps" run lands near 30. Hand the clock to the limiter alone so
     # `--fps` is the actual frame rate (and the fly gets the time it needs).
