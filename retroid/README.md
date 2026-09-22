@@ -174,11 +174,17 @@ the ball is prioritised by **wiring**. That arbitration is the connectome's own.
 To compare the two objects on equal footing, route *both* through the chase channel
 (`--chase2`) and let a **physical urgency** set each one's drive. `object_demand`
 (`retroidsim/encoder.py`) scores an object by proximity × imminence: angular size is
-`k / dist`, loom rate is `size / t_arrive` (zero while the object ascends), boosted
-when the paddle cannot cover `|dx|` in time. Those are the quantities a loom detector
-(LPLC2) responds to, so the front end is doing the eye's job; the only non-sensory
-part is `stake` -- that the ball is worth more than the item is Arkanoid's rule, not
-biology.
+`k / dist`, loom rate is `size / t_arrive` (zero while the object ascends). Those are
+the quantities a loom detector (LPLC2) responds to, so the front end is doing the eye's
+job; the only non-sensory part is `stake` -- that the ball is worth more than the item
+is Arkanoid's rule, not biology.
+
+An earlier version multiplied the loom by a **reach factor** whenever covering `|dx|`
+would take the paddle longer than the object's time to arrive. That knows the actor's
+motor limit, not the stimulus, and with the continuous readout it turned out to hurt
+play: in ball-only runs it raised `mean |dx|` from 8.3 to 14.7 px across four scenes by
+over-committing the paddle to laterally distant balls. It was removed, so the drive
+above is now purely sensory. (The numbers below were measured while it was still in.)
 
 With the real connectome and the innate decoder, across four starting scenes, the more
 urgent the ball the more the fly follows it rather than the item:
