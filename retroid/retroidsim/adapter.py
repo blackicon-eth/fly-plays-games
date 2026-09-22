@@ -38,6 +38,10 @@ SCREEN_W, SCREEN_H = 160, 144
 # `RetroidAdapter.stage` -- starts and stays on the boss without the menu cheat.
 STAGE_ADDR = 0xC4B1
 BOSS_STAGE = 21
+# Remaining lives (the HUD's "xNN"). It drops both when the ball is missed and
+# when one of the boss's shots reaches the paddle, so on stage 21 it is the real
+# score of a run -- the ball-loss counter alone misses the shot deaths.
+LIVES_ADDR = 0xC457
 
 BALL_TILE = 0x00
 # Normal paddle ($01-$03: left, middle, right) plus every transformed form seen in
@@ -47,6 +51,11 @@ BALL_TILE = 0x00
 PADDLE_TILES = (0x01, 0x02, 0x03, 0x04, 0x05,
                 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20)
 ITEM_TILES = (0x18, 0x19)   # the falling capsule in level 1 (two animation frames)
+# The boss (stage 21) fires a pair of shots that fall and spread apart from the
+# centre, one to each side (two animation frames, $23/$24). They are the only
+# hardware sprites besides the ball, paddle, item and font, so they identify the
+# boss's projectiles the same way the paddle tiles identify the paddle.
+PROJECTILE_TILES = (0x23, 0x24)
 # The font sprites the game draws centered on the GAME OVER / menu screens (four
 # two-by-two letters). They never appear as sprites during play -- the HUD uses the
 # background -- so seeing one means the game is waiting on a press.
@@ -147,6 +156,19 @@ class RetroidAdapter:
             if tile in ITEM_TILES:
                 return x, y
         return None
+
+    def lives(self) -> int | None:
+        """Remaining lives as the HUD shows them, or None if out of range."""
+        v = int(self.pb.memory[LIVES_ADDR])
+        return v if 0 <= v <= 99 else None
+
+    def projectiles(self) -> list[tuple[int, int]]:
+        """The boss's falling shots on screen, as (x, y) top-left corners.
+
+        Empty on every other stage. The boss fires two, one per side, so this is
+        normally a pair; a list keeps it honest if that ever changes.
+        """
+        return [(x, y) for x, y, tile in self._visible() if tile in PROJECTILE_TILES]
 
     def menu_text(self) -> bool:
         """True while the GAME OVER / menu letter sprites are on screen, i.e. the

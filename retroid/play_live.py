@@ -36,9 +36,9 @@ sys.path.insert(0, str(ROOT / "fly-ai"))
 
 from flybrain import FlyBrain
 from flybrain.reservoir import Readout
-from retroidsim import (DEFAULT_ROM, STAKE_BALL, STAKE_ITEM, ContinuousChase, RetroidAdapter,
-                        dn_features, dn_features_chase2, object_demand,
-                        train_continuous_readout, train_readout)
+from retroidsim import (DEFAULT_ROM, STAKE_BALL, STAKE_ESCAPE, STAKE_ITEM, ContinuousChase,
+                        RetroidAdapter, dn_features, dn_features_chase2, escape_sides,
+                        object_demand, train_continuous_readout, train_readout)
 
 
 def train_items_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight: float = 0.1,
@@ -125,6 +125,12 @@ def main() -> None:
                     help="item distance = straight line paddle-item, so a far one looms less")
     ap.add_argument("--vx-gain", type=float, default=0.0,
                     help="add a drive on the side the ball is moving toward (px/frame of vx); 0 = off")
+    ap.add_argument("--escape", action="store_true",
+                    help="dodge the boss's shots: drive the escape neurons (DNp01) with a shot's looming (continuous mode)")
+    ap.add_argument("--escape-stake", type=float, default=STAKE_ESCAPE,
+                    help="how much a boss shot counts as a threat to flee (bigger = dodge sooner)")
+    ap.add_argument("--escape-gain", type=float, default=0.08,
+                    help="how hard the escape reflex (read off DNp01) overrides the chase when a shot looms")
     ap.add_argument("--volume", type=int, default=40, help="game sound volume, 0-100")
     ap.add_argument("--exit-after", type=int, default=24,
                     help="frames without a live ball after which the level is assumed cleared and the fly drives right")
@@ -168,7 +174,8 @@ def main() -> None:
               f"ball drive = base {args.base:g} + urgency (size weight {args.size_weight:g}), "
               f"item drive = urgency (stake {args.item_stake:g}"
               f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}"
-              f"{', vx gain %g' % args.vx_gain if args.vx_gain else ''}", flush=True)
+              f"{', vx gain %g' % args.vx_gain if args.vx_gain else ''}"
+              f"{', escape (stake %g, gain %g)' % (args.escape_stake, args.escape_gain) if args.escape else ''}", flush=True)
     elif args.items:
         readout = train_items_readout(brain, base=args.base, cap=args.cap,
                                       size_weight=args.size_weight, item_stake=args.item_stake,
@@ -243,6 +250,9 @@ def main() -> None:
     dx_sum = dx_n = relaunches = losses = serves = 0
     items_caught = items_missed = item_gaps = 0
     prev_item = None
+    prev_projs: list = []
+    esc_level = 0.0
+    prev_lives = None
     prev_live = True
     ball_gone = 0
     loss_log: list = []
@@ -251,6 +261,14 @@ def main() -> None:
         for step in range(args.steps):
             frame_start = time.perf_counter()
             st = a.state()
+            projs = a.projectiles()
+            lv = a.lives()
+            if prev_lives is not None and lv is not None and lv < prev_lives:
+                near = [(x, y) for x, y in projs if st.paddle_x is not None
+                        and y >= 116 and abs(x - st.paddle_x) <= 16]
+                print(f"  DEATH step {step}: lives {prev_lives}->{lv}  ball=({st.ball_x},{st.ball_y})"
+                      f"  paddle={st.paddle_x}  shots_near={near}  all_shots={projs}", flush=True)
+            prev_lives = lv
             pos_ok = prev_ball_x is not None and prev_ball_y is not None
             ball_vy = 0.0 if (st.ball_y is None or not pos_ok) else st.ball_y - prev_ball_y
             ball_vx = 0.0 if (st.ball_x is None or not pos_ok) else st.ball_x - prev_ball_x
@@ -315,14 +333,27 @@ def main() -> None:
                 if fly is not None:
                     db = args.base + object_demand(st.ball_y, ball_vy, st.dx,
                                                    stake=STAKE_BALL, size_weight=args.size_weight)
+                    esc_l = esc_r = 0.0
+                    if args.escape and projs and st.paddle_x is not None:
+                        esc_l, esc_r = escape_sides(projs, st.paddle_x, prev_projs,
+                                                    stake=args.escape_stake)
                     if args.items and st.item_dx is not None:
                         di = object_demand(st.item_y, item_vy, st.item_dx,
                                            stake=args.item_stake, diagonal=args.item_diagonal)
-                        f = fly.step(st.dx, db, st.item_dx, di, cap=args.cap, vx_a=ball_vx)
+                        f = fly.step(st.dx, db, st.item_dx, di, cap=args.cap, vx_a=ball_vx,
+                                     escape_l=esc_l, escape_r=esc_r)
                     else:
-                        f = fly.step(st.dx, db, None, None, cap=args.cap, vx_a=ball_vx)
+                        f = fly.step(st.dx, db, None, None, cap=args.cap, vx_a=ball_vx,
+                                     escape_l=esc_l, escape_r=esc_r)
                     p = float(readout.predict(f))
-                    want = "right" if p >= 0.5 else "left"
+                    esc_level = fly.escape_level() if args.escape else 0.0
+                    if args.escape:
+                        # Chase (trained) plus the escape reflex (fixed sign, read
+                        # off DNp01): a shot looming on a side pushes the other way.
+                        turn = (p - 0.5) - args.escape_gain * esc_level
+                        want = "right" if turn >= 0.0 else "left"
+                    else:
+                        want = "right" if p >= 0.5 else "left"
                     spikes = int(brain.fired.size)
                 else:
                     with lock:
@@ -335,6 +366,7 @@ def main() -> None:
                     a.hold(want)
                     held = want
                 a.step(1)
+            prev_projs = projs
             # Relative cap: never sleep on a stalled frame (no 60 fps catch-up burst),
             # and never exceed --fps. The relaunch branch paces too, so the press above
             # is the only burst left, and it happens with the ball already dead.
@@ -351,8 +383,12 @@ def main() -> None:
                 bx = "  -" if st.ball_x is None else "%3d" % st.ball_x
                 px = "  -  " if st.paddle_x is None else "%5.1f" % st.paddle_x
                 dxs = "  -  " if st.dx is None else "%+5.0f" % st.dx
+                shot_tag = ""
+                if args.escape:
+                    sx = ",".join("%d@%d" % (x, y) for x, y in projs) or "-"
+                    shot_tag = f"  shots=[{sx}]  escape={esc_level:+.2f}"
                 print(f"  step {step:4d}  ball x={bx}  paddle x={px}  dx={dxs}  item={item_tag}"
-                      f"  p(right)={p:.2f} -> {want}  | DN spikes {spikes}", flush=True)
+                      f"  p(right)={p:.2f} -> {want}  | DN spikes {spikes}{shot_tag}", flush=True)
     except KeyboardInterrupt:
         print("stopped")
     finally:
@@ -361,9 +397,11 @@ def main() -> None:
             a.release(held)
         a.close()
         if dx_n:
+            lives = a.lives()
             print("summary: %d frames in play, mean |dx| %.1f px, ball losses %d "
-                  "(relaunch presses %d), items caught %d missed %d gap %d"
-                  % (dx_n, dx_sum / dx_n, losses, relaunches, items_caught, items_missed, item_gaps),
+                  "(relaunch presses %d), items caught %d missed %d gap %d, lives left %s"
+                  % (dx_n, dx_sum / dx_n, losses, relaunches, items_caught, items_missed, item_gaps,
+                     "?" if lives is None else lives),
                   flush=True)
         if args.log_losses:
             summarize_losses(loss_log, serves)

@@ -54,6 +54,47 @@ DRIVE_CAP = 2.0           # most drive a single object can ask for
 STAKE_BALL, STAKE_ITEM = 1.0, 0.3   # losing the ball costs a life; an item is a bonus
 PADDLE_Y = 136.0
 VX_GAIN = 0.4             # drive added on the side an object is moving toward, per px/frame of `vx`
+STAKE_ESCAPE = 1.0        # how much the boss's shot counts as a threat to flee
+ESCAPE_CAP = 3.0          # most escape drive one shot can ask for
+# The escape neurons are sensitive (their tonic alone parks them near threshold),
+# so any drive at all would make them fire. Only hand them a shot that is actually
+# bearing down on the paddle; below this the shot is somewhere else on the screen.
+ESCAPE_MIN = 1.0
+
+
+def escape_sides(projectiles, paddle_x: float, prev=(), stake: float = STAKE_ESCAPE,
+                 cap: float = ESCAPE_CAP, size_weight: float = 0.1,
+                 min_drive: float = ESCAPE_MIN) -> tuple[float, float]:
+    """Per-side escape drive from the boss's shots: the looming urgency of a shot
+    that is about to reach the paddle, delivered to the escape neuron (DNp01) on
+    the shot's own side. The fly's escape reflex turns it *away* from that side;
+    the readout reads that reflex off the descending trace.
+
+    `prev` is last frame's shot list, used only for the present descent speed (vy,
+    a visible motion, no extrapolation). `size_weight` keeps the drive about
+    imminence, not raw proximity, so it stays low while the shot is high up and
+    rises only as it bears down on the paddle -- otherwise the fly would flinch at
+    every shot and never track the ball.
+    """
+    dl = dr = 0.0
+    for x, y in projectiles:
+        dx = float(x) - float(paddle_x)
+        vy, nearest = 0.0, None
+        for px, py in prev:
+            d = abs(px - x)
+            if nearest is None or d < nearest:
+                nearest, vy = d, float(y) - float(py)
+        if nearest is None or nearest > 16:
+            vy = 0.0
+        d = object_demand(y, max(vy, 0.0), dx, stake=stake, cap=cap,
+                          size_weight=size_weight, diagonal=True)
+        if d < min_drive:
+            continue
+        if dx < 0:
+            dl = max(dl, d)
+        else:
+            dr = max(dr, d)
+    return dl, dr
 
 
 def object_demand(y: float | None, vy: float | None, dx: float | None = None,
@@ -216,26 +257,48 @@ class ContinuousChase:
         self.det = FeatureDetectors(brain)
         self.trace = Trace(brain, types=["descending_neuron"], tau=tau)
         self.vx_gain = vx_gain
+        # The fly's escape neurons (DNp01), one per side. A looming threat (the
+        # boss's shot) drives them directly; `escape_level` reads the reflex off
+        # their trace with the reflex's own sign (away from the looming side).
+        self.escape = {s: brain.groups[f"escape_{s}"] for s in "LR"}
+        self._escape_slot = {s: int(self.trace.slot[i[0]]) for s, i in self.escape.items()}
         brain.reset(seed=0)
 
-    def _inject(self, dx_a, drive_a, dx_b, drive_b, cap, vx_a=None, vx_b=None):
-        """Both objects into the chase channel (`cells["chase"]`), by side, capped.
-        Same layout `FeatureDetectors.inject` returns, so `brain.step` consumes it."""
+    def _inject(self, dx_a, drive_a, dx_b, drive_b, cap, vx_a=None, vx_b=None,
+                escape_l: float = 0.0, escape_r: float = 0.0):
+        """Both objects into the chase channel (`cells["chase"]`), by side, capped;
+        the boss's shots into the escape neurons. Same layout `FeatureDetectors.inject`
+        returns, so `brain.step` consumes it."""
         dl, dr = _sides(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b, self.vx_gain)
         inj = []
         if dl > 0:
             inj.append((self.det.cells["chase"]["L"], np.float32(dl)))
         if dr > 0:
             inj.append((self.det.cells["chase"]["R"], np.float32(dr)))
+        if escape_l > 0:
+            inj.append((self.escape["L"], np.float32(escape_l)))
+        if escape_r > 0:
+            inj.append((self.escape["R"], np.float32(escape_r)))
         return inj
 
     def step(self, dx_a: float | None = None, drive_a: float | None = None,
              dx_b: float | None = None, drive_b: float | None = None,
              cap: float = DRIVE_CAP, vx_a: float | None = None,
-             vx_b: float | None = None) -> np.ndarray:
-        """One step: inject both objects' drives and return the DN trace features."""
-        inj = self._inject(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b)
+             vx_b: float | None = None, escape_l: float = 0.0,
+             escape_r: float = 0.0) -> np.ndarray:
+        """One step: inject the objects' drives and the escape drive, return features."""
+        inj = self._inject(dx_a, drive_a, dx_b, drive_b, cap, vx_a, vx_b, escape_l, escape_r)
         return self.trace.observe(self.brain.step(inject=inj))
+
+    def escape_level(self) -> float:
+        """The escape reflex read off DNp01: how hard the fly wants to flee.
+
+        Positive means the looming side is the right, so the fly turns left -- the
+        sign is the reflex's own direction, not a trained weight. Zero when neither
+        escape neuron is firing, so a run with no shots is unchanged.
+        """
+        t = self.trace.trace
+        return float(t[self._escape_slot["R"]].sum() - t[self._escape_slot["L"]].sum())
 
 
 def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight: float = 0.1,
@@ -249,6 +312,10 @@ def train_continuous_readout(brain, base: float = 0.8, cap: float = 3.0, size_we
     time; each step is labelled by the side of whichever drive is larger, as in the
     per-decision trainer. Only the sampling differs: the readout sees a sliding
     window instead of a fresh 8-step response, which is why it needs its own fit.
+
+    This is the *chase* reflex only. The escape reflex (the boss's shots) is not
+    trained here: it is read off the escape neurons with a fixed sign at run time
+    (see `ContinuousChase.escape_level`), so this fit is untouched by it.
     """
     rng = np.random.default_rng(seed)
     fly = ContinuousChase(brain, vx_gain=vx_gain)
