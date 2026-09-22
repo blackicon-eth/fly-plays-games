@@ -124,9 +124,14 @@ def main() -> None:
     brain = FlyBrain(data=args.data, device=args.device)
     fly = None
     if args.continuous:
+        # Always train the continuous readout with the item in the regime, even in
+        # ball-only play: trained on the ball alone it degenerates to a constant
+        # "right" (the one-sided drive leaves the descending-neuron trace nearly the
+        # same for left and right, and the tie-unsafe offline AUC hides it). The
+        # item-in-the-regime readout tracks the ball well whether or not an item shows.
         readout = train_continuous_readout(brain, base=args.base, cap=args.cap,
                                            size_weight=args.size_weight, item_stake=args.item_stake,
-                                           diagonal=args.item_diagonal, with_item=args.items)
+                                           diagonal=args.item_diagonal, with_item=True)
         fly = ContinuousChase(brain)     # fresh state for the live run
         print(f"decoder: continuous brain, one step per frame (AUC {readout.cv_score:.3f}); "
               f"ball drive = base {args.base:g} + urgency (size weight {args.size_weight:g}), "

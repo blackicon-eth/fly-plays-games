@@ -42,13 +42,12 @@ def proximity_size(y: float | None, y_far: float = PROX_FAR, y_near: float = PRO
 # paddle. Its angular size is `size ~ k / dist` (proximity) and its loom rate
 # (angular growth per frame) is `loom ~ k * vy / dist**2 = size / t_arrive`
 # (imminence). So loom is exactly proximity x imminence, and it is zero for an
-# ascending object: a ball low but moving away is not urgent. The paddle also has
-# to *reach* the object, so if covering |dx| takes longer than the object takes to
-# arrive, loom is boosted. `demand` adds imminence to raw proximity and saturates,
-# and `stake` is the cost of missing the object (losing the ball costs a life).
+# ascending object: a ball low but moving away is not urgent. `demand` adds
+# imminence to raw proximity and saturates. There is no reach term: whether the
+# paddle can cover |dx| in time is a fact about the actor, not the stimulus, so it
+# is left out. `stake` is the cost of missing the object (losing the ball costs a life).
 PERSPECTIVE_K = 400.0     # k in size = k / dist
 URGENCY_EPS = 6.0         # floor on dist, so a caught ball does not blow up
-PADDLE_SPEED = 2.0        # px/frame, to race |dx|
 URGENCY_LAMBDA = 20.0     # how much imminence (loom) adds to proximity (size)
 URGENCY_TAU = 20.0        # demand -> drive saturation
 DRIVE_CAP = 2.0           # most drive a single object can ask for
@@ -58,7 +57,7 @@ PADDLE_Y = 136.0
 
 def object_demand(y: float | None, vy: float | None, dx: float | None = None,
                   stake: float = 1.0, paddle_y: float = PADDLE_Y, k: float = PERSPECTIVE_K,
-                  eps: float = URGENCY_EPS, paddle_speed: float = PADDLE_SPEED,
+                  eps: float = URGENCY_EPS,
                   lam: float = URGENCY_LAMBDA, tau: float = URGENCY_TAU,
                   cap: float = DRIVE_CAP, size_weight: float = 1.0,
                   diagonal: bool = False) -> float:
@@ -78,8 +77,7 @@ def object_demand(y: float | None, vy: float | None, dx: float | None = None,
     (`|dx|` and the vertical gap together) instead of the vertical gap alone. A
     laterally distant object is then *farther* and looms *less*, so it stops asking
     for a detour without a separate reach discount: proximity and imminence both fall
-    off smoothly, which a linear readout can use. Only `|dx|` enters the non-diagonal
-    loom, as a boost when the paddle cannot cover it in time.
+    off smoothly, which a linear readout can use.
     """
     if y is None:
         return 0.0
@@ -92,13 +90,7 @@ def object_demand(y: float | None, vy: float | None, dx: float | None = None,
     else:
         d = dy
         size = k / d
-        loom = 0.0
-        if v > 0.0:
-            loom = k * v / (d * d)
-            if dx is not None:
-                t_arrive = d / v
-                t_cover = abs(float(dx)) / paddle_speed
-                loom *= 1.0 + t_cover / t_arrive
+        loom = (k * v / (d * d)) if v > 0.0 else 0.0
     demand = stake * (size_weight * size + lam * loom)
     return cap * demand / (demand + tau)
 
