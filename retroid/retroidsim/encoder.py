@@ -56,6 +56,10 @@ PADDLE_Y = 136.0
 VX_GAIN = 0.4             # drive added on the side an object is moving toward, per px/frame of `vx`
 STAKE_ESCAPE = 1.0        # how much the boss's shot counts as a threat to flee
 ESCAPE_CAP = 3.0          # most escape drive one shot can ask for
+# A shot has to loom enough to move the paddle clear before it reaches the edge.
+# The ball's own drive leans on imminence (size weight 0.1); a shot is a smaller
+# object on a shorter fuse, so it is read with more of its raw proximity.
+ESCAPE_SIZE_WEIGHT = 0.4
 # The escape neurons are sensitive (their tonic alone parks them near threshold),
 # so any drive at all would make them fire. Only hand them a shot that is actually
 # bearing down on the paddle; below this the shot is somewhere else on the screen.
@@ -63,7 +67,7 @@ ESCAPE_MIN = 1.0
 
 
 def escape_sides(projectiles, paddle_x: float, prev=(), stake: float = STAKE_ESCAPE,
-                 cap: float = ESCAPE_CAP, size_weight: float = 0.1,
+                 cap: float = ESCAPE_CAP, size_weight: float = ESCAPE_SIZE_WEIGHT,
                  min_drive: float = ESCAPE_MIN) -> tuple[float, float]:
     """Per-side escape drive from the boss's shots: the looming urgency of a shot
     that is about to reach the paddle, delivered to the escape neuron (DNp01) on

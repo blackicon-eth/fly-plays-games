@@ -2,10 +2,11 @@
 
 *Part of [fly-plays-games](../README.md): a real fruit-fly connectome driving games.*
 
-**Status: working (level 1).** The fly connectome tracks the ball with the paddle
-and keeps it alive; an ablation shows the specific *wiring* -- not the weight
-values -- is what carries the signal. Same brain, same visual front end and same
-readout as the Pokémon Red chapter; only the game adapter is new.
+**Status: working (level 1, and the boss).** The fly connectome tracks the ball
+with the paddle and keeps it alive; an ablation shows the specific *wiring* -- not
+the weight values -- is what carries the signal. On the boss it dodges the shots
+with its own escape neurons (DNp01) and beats it. Same brain, same visual front
+end and same readout as the Pokémon Red chapter; only the game adapter is new.
 
 ![The fly connectome driving Retroid: the fly on a gamepad, the game with a ball/paddle track, and the connectome's activity](media/retroid_fly.gif)
 
@@ -29,10 +30,11 @@ It fits the fly far better than Pokémon does:
 The Game Boy draws the ball and paddle as hardware sprites, so the adapter reads
 them from the OAM table at `$FE00` instead of reverse-engineering WRAM. Each of
 the 40 slots is four bytes `(screen y, screen x, tile, attributes)`; Retroid keeps
-the **ball in tile `$00`** and the **paddle in tiles `$01`–`$03`** (plus the power-up
-forms `$04`/`$05` and `$1B`–`$20`, so a transformed paddle is still found). The
-adapter finds them by tile, so it does not care about the slot order. Everything
-else is the shared pipeline:
+the **ball in tile `$00`**, the **paddle in tiles `$01`–`$03`** (plus the power-up
+forms `$04`/`$05` and `$1B`–`$20`, so a transformed paddle is still found) and the
+boss's **shots in tiles `$23`/`$24`**. The adapter finds them by tile, so it does
+not care about the slot order. The HUD lives are a WRAM byte at `$C457`.
+Everything else is the shared pipeline:
 
 ```
 ball offset dx ─▶ visual projection neurons ─▶ the connectome ─▶ descending neurons ─▶ readout ─▶ left/right
@@ -262,6 +264,40 @@ cleared level's exit are hand-written scaffolding in `play_live.py`, not the
 connectome. The drives and their weights are our choices too; the brain is the
 channel they run through.
 
+## The boss: dodging its shots with the fly's escape neurons
+
+Level 1 is pure tracking. The **boss** (stage 21) adds a signal the fly must
+survive: it fires volleys of **shots** that fall toward the paddle, and a shot
+that reaches the paddle costs a life just like a lost ball. The adapter reads the
+shots from the OAM table (tiles **`$23`/`$24`**) and the HUD lives byte at
+**`$C457`**.
+
+Watching the fly on the boss makes the failure mode plain: **it dies to the
+shots, almost never to the ball.** Every death has the same shape -- the ball is
+high and safe (y ≈ 46-64), the paddle is tracking it, and a shot lands on the
+paddle's edge. The control (no escape) loses **all five lives to shots**, game
+over at step 2768.
+
+So the fly uses the organ that exists for exactly this: its **escape neurons
+(DNp01)**, the giant-fiber command. `escape_sides` reads each shot's looming
+urgency (the same `object_demand` as the ball, but leaning on raw proximity -- a
+shot is small and on a short fuse) and delivers it to the DNp01 on the shot's
+side; `escape_level` reads the reflex back off their trace with the **reflex's
+own sign** (flee away from the looming side), and the chase command subtracts it.
+The ball readout is untouched.
+
+| boss, same scene | outcome |
+| --- | --- |
+| fly, no escape | 5 deaths to shots, game over at step 2768 |
+| **fly + escape (DNp01)** | **boss beaten -- its shots stop at step ~5040, level cleared ~6030** |
+
+The honest split: the sensor (a shot's looming) and the organ (DNp01) are the
+fly's; the fixed sign of the read-back is our declared choice, like `stake`. One
+cost we paid for: an early version **latched** the escape for 0.4 s after the shot
+passed, which kept the paddle fleeing long after the danger was gone -- a fly
+stuck in a corner, "escaping" with no shot on screen. The latch is gone; the
+escape now follows the shot.
+
 ## Where the fly ends: anticipation is not prediction
 
 The fast diagonal ball that bounces off a wall is the fly's hard case. It is not a
@@ -304,6 +340,8 @@ The ROM is free from the author's itch.io page and is **not committed**. Put it 
 python retroid/play_live.py --scale 4                  # watch it, with a window
 python retroid/play_live.py --scale 4 --fps 40 --items # live, also chasing the falling item
 python retroid/play_live.py --scale 4 --continuous     # one connectome step per frame, 60 fps
+python retroid/play_live.py --scene boss --stage 21 --continuous --escape  # the boss: dodge its shots
+python retroid/play_live.py --scene boss --stage 21 --continuous           # the control: no escape
 python retroid/render/record_fly.py --steps 1200       # record a run to render/fly_drive.npz
 python retroid/render/render_fly.py                    # render that npz to media/retroid_fly.mp4
 python retroid/render/record_fly.py --ablate shuffle   # the control condition
@@ -330,7 +368,11 @@ python retroid/render/render_fly.py --input render/conflict_play.npz --start 790
   from pixels. A power-up can also change the paddle's *graphic*; the adapter reads
   those tiles too (`$04`/`$05`, `$1B`–`$20`), which used to make `paddle_x` return
   `None` and freeze the fly mid-level.
-* **Levels with enemies or multiple balls** are out of reach.
+* **The boss.** Its shots are read from the OAM table and its lives from `$C457`;
+  `--stage 21` freezes the game on the boss so a run cannot advance past it. The
+  escape is the fly's DNp01 reflex driven by a shot's looming, with a fixed sign we
+  declare.
+* **Levels with multiple balls** are out of reach.
 * **Sprite identification** assumes the ball stays tile `$00`; a level that
   reuses that tile for something else would confuse the adapter.
 * **Lost-ball detection.** A lost ball is the sprite disappearing from the OAM

@@ -24,6 +24,7 @@ import argparse
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -131,6 +132,8 @@ def main() -> None:
                     help="how much a boss shot counts as a threat to flee (bigger = dodge sooner)")
     ap.add_argument("--escape-gain", type=float, default=0.08,
                     help="how hard the escape reflex (read off DNp01) overrides the chase when a shot looms")
+    ap.add_argument("--escape-ball-safe", type=float, default=0.8,
+                    help="only dodge while the ball's own urgency is at most this (the ball is safe high up)")
     ap.add_argument("--volume", type=int, default=40, help="game sound volume, 0-100")
     ap.add_argument("--exit-after", type=int, default=24,
                     help="frames without a live ball after which the level is assumed cleared and the fly drives right")
@@ -169,13 +172,15 @@ def main() -> None:
                                            size_weight=args.size_weight, item_stake=args.item_stake,
                                            diagonal=args.item_diagonal, with_item=True,
                                            vx_gain=args.vx_gain)
-        fly = ContinuousChase(brain, vx_gain=args.vx_gain)     # fresh state for the live run
+        fly = ContinuousChase(brain, vx_gain=args.vx_gain)    # fresh state for the live run
         print(f"decoder: continuous brain, one step per frame (AUC {readout.cv_score:.3f}); "
               f"ball drive = base {args.base:g} + urgency (size weight {args.size_weight:g}), "
               f"item drive = urgency (stake {args.item_stake:g}"
               f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}"
               f"{', vx gain %g' % args.vx_gain if args.vx_gain else ''}"
-              f"{', escape (stake %g, gain %g)' % (args.escape_stake, args.escape_gain) if args.escape else ''}", flush=True)
+              f"{', escape (stake %g, gain %g, ball-safe %g)'
+                 % (args.escape_stake, args.escape_gain, args.escape_ball_safe)
+                 if args.escape else ''}", flush=True)
     elif args.items:
         readout = train_items_readout(brain, base=args.base, cap=args.cap,
                                       size_weight=args.size_weight, item_stake=args.item_stake,
@@ -253,6 +258,7 @@ def main() -> None:
     prev_projs: list = []
     esc_level = 0.0
     prev_lives = None
+    recent: deque = deque(maxlen=12)
     prev_live = True
     ball_gone = 0
     loss_log: list = []
@@ -264,10 +270,10 @@ def main() -> None:
             projs = a.projectiles()
             lv = a.lives()
             if prev_lives is not None and lv is not None and lv < prev_lives:
-                near = [(x, y) for x, y in projs if st.paddle_x is not None
-                        and y >= 116 and abs(x - st.paddle_x) <= 16]
-                print(f"  DEATH step {step}: lives {prev_lives}->{lv}  ball=({st.ball_x},{st.ball_y})"
-                      f"  paddle={st.paddle_x}  shots_near={near}  all_shots={projs}", flush=True)
+                print(f"  DEATH step {step}: lives {prev_lives}->{lv}", flush=True)
+                for r in recent:
+                    print(f"      f{r[0]:4d} ball=({r[1]},{r[2]}) paddle={r[3]}"
+                          f" esc={r[5]:+.2f} p={r[6]:.2f}->{r[7]} shots={r[4]}", flush=True)
             prev_lives = lv
             pos_ok = prev_ball_x is not None and prev_ball_y is not None
             ball_vy = 0.0 if (st.ball_y is None or not pos_ok) else st.ball_y - prev_ball_y
@@ -334,7 +340,12 @@ def main() -> None:
                     db = args.base + object_demand(st.ball_y, ball_vy, st.dx,
                                                    stake=STAKE_BALL, size_weight=args.size_weight)
                     esc_l = esc_r = 0.0
-                    if args.escape and projs and st.paddle_x is not None:
+                    # The paddle cannot dodge and catch the ball at once, and the fly
+                    # only ever dies to a shot while the ball is safe high up, so flee
+                    # only then: if the ball is itself bearing down, stay with it.
+                    if (args.escape and projs and st.paddle_x is not None
+                            and object_demand(st.ball_y, ball_vy, st.dx, stake=STAKE_BALL,
+                                              size_weight=args.size_weight) <= args.escape_ball_safe):
                         esc_l, esc_r = escape_sides(projs, st.paddle_x, prev_projs,
                                                     stake=args.escape_stake)
                     if args.items and st.item_dx is not None:
@@ -366,6 +377,7 @@ def main() -> None:
                     a.hold(want)
                     held = want
                 a.step(1)
+            recent.append((step, st.ball_x, st.ball_y, st.paddle_x, tuple(projs), esc_level, p, want))
             prev_projs = projs
             # Relative cap: never sleep on a stalled frame (no 60 fps catch-up burst),
             # and never exceed --fps. The relaunch branch paces too, so the press above
