@@ -83,6 +83,29 @@ def train_items_readout(brain, base: float = 0.8, cap: float = 3.0, size_weight:
     return Readout.fit(np.stack(X), np.array(y), kind="logistic")
 
 
+def summarize_losses(log: list, serves: int = 0) -> None:
+    """Print where balls were lost: last moving (dx, vx, vy, y, p) per miss."""
+    n = len(log)
+    if not n:
+        print(f"loss log: no misses recorded (serve/rest events: {serves})")
+        return
+    dx = np.array([r[0] for r in log], float)
+    vx = np.array([r[1] for r in log], float)
+    vy = np.array([r[2] for r in log], float)
+    left = int((dx < -8).sum())
+    right = int((dx > 8).sum())
+    centre = n - left - right
+    print(f"loss log: {n} misses (serve/rest events: {serves})")
+    print(f"  side at loss: left {left}  centre {centre}  right {right}")
+    print(f"  |dx| at loss: mean {np.abs(dx).mean():.1f} px  (max {np.abs(dx).max():.0f})")
+    print(f"  |vx| at loss: mean {np.abs(vx).mean():.2f} px/frame  (max {np.abs(vx).max():.0f})")
+    print(f"  vy  at loss: mean {vy.mean():+.2f} px/frame")
+    edges = np.arange(-80, 81, 20)
+    counts, _ = np.histogram(dx, bins=edges)
+    for lo, c in zip(edges[:-1], counts):
+        print(f"  dx {lo:+4.0f}..{lo+20:+4.0f}: {'#' * c} {c}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--make-scene", default=None, metavar="NAME", help="bookmark the level start as NAME and exit")
@@ -106,6 +129,8 @@ def main() -> None:
     ap.add_argument("--continuous", action="store_true",
                     help="never reset the brain: one connectome step per frame (fits 60 fps) instead of the threaded 8-step decisions")
     ap.add_argument("--scene", default=None, help="start from a saved mid-flight scene (e.g. level1_c)")
+    ap.add_argument("--log-losses", action="store_true",
+                    help="at each ball loss, record the last live ball state (dx, vx, vy, y, p) and print a summary")
     ap.add_argument("--headless", action="store_true", help="run without a window (tests); throttled to --fps")
     ap.add_argument("--fps", type=float, default=60.0,
                     help="frame rate to target (the brain decides ~19 times a second)")
@@ -207,21 +232,34 @@ def main() -> None:
     frame_dt = 1.0 / args.fps
     held = None
     prev_ball_y = prev_item_y = None
-    dx_sum = dx_n = relaunches = losses = 0
+    prev_ball_x = None
+    dx_sum = dx_n = relaunches = losses = serves = 0
     items_caught = items_missed = item_gaps = 0
     prev_item = None
     prev_live = True
     ball_gone = 0
+    loss_log: list = []
+    last_live = None
     try:
         for step in range(args.steps):
             frame_start = time.perf_counter()
             st = a.state()
-            ball_vy = 0.0 if (st.ball_y is None or prev_ball_y is None) else st.ball_y - prev_ball_y
+            pos_ok = prev_ball_x is not None and prev_ball_y is not None
+            ball_vy = 0.0 if (st.ball_y is None or not pos_ok) else st.ball_y - prev_ball_y
+            ball_vx = 0.0 if (st.ball_x is None or not pos_ok) else st.ball_x - prev_ball_x
             item_vy = 0.0 if (st.item_y is None or prev_item_y is None) else st.item_y - prev_item_y
             prev_ball_y, prev_item_y = st.ball_y, st.item_y
+            prev_ball_x = st.ball_x
             live = a.ball_live()
             if prev_live and not live:
                 losses += 1
+                # A real miss is the ball sprite vanishing; a stopped ball on the paddle
+                # is a serve, not a loss, so keep it out of the histogram.
+                if st.ball_x is None:
+                    if args.log_losses and last_live is not None:
+                        loss_log.append(last_live)
+                else:
+                    serves += 1
             prev_live = live
             cur_item = None if st.item_x is None else (st.item_x, st.item_y)
             if prev_item is not None and cur_item is None:
@@ -282,6 +320,8 @@ def main() -> None:
                 else:
                     with lock:
                         want, p, spikes = box["want"] or held, box["p"], box["spikes"]
+                if args.log_losses and pos_ok and (ball_vx != 0.0 or ball_vy != 0.0):
+                    last_live = (st.dx, ball_vx, ball_vy, st.ball_y, p)
                 if want != held:
                     if held:
                         a.release(held)
@@ -318,6 +358,8 @@ def main() -> None:
                   "(relaunch presses %d), items caught %d missed %d gap %d"
                   % (dx_n, dx_sum / dx_n, losses, relaunches, items_caught, items_missed, item_gaps),
                   flush=True)
+        if args.log_losses:
+            summarize_losses(loss_log, serves)
 
 
 if __name__ == "__main__":
