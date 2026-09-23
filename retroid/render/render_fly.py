@@ -33,7 +33,9 @@ ap.add_argument("--input", default=str(GAME / "render" / "fly_drive.npz"))
 ap.add_argument("--output", default=str(GAME / "media" / "retroid_fly.mp4"))
 ap.add_argument("--caption", default="the connectome picks left or right; the paddle follows")
 ap.add_argument("--bar-label", default="level 1")
-ap.add_argument("--max-frames", type=int, default=1200)
+ap.add_argument("--max-frames", type=int, default=1200, help="frames to render; 0 = all recorded (real speed)")
+ap.add_argument("--fps", type=int, default=60, help="output frame rate (the game runs ~60 fps)")
+ap.add_argument("--audio", default="", help="optional WAV to mux into the mp4")
 ap.add_argument("--start", type=int, default=0, help="first recorded frame to render")
 ap.add_argument("--end", type=int, default=-1, help="last recorded frame (default: the end)")
 args = ap.parse_args()
@@ -134,10 +136,13 @@ try:
 except Exception:
     font = fontS = fontB = ImageFont.load_default()
 
-idxs = np.linspace(lo_f, hi_f - 1, min(hi_f - lo_f, args.max_frames)).astype(int).tolist()
-print("recorded", N, "-> frames", len(idxs), "-> %.1fs at 25fps" % (len(idxs) / 25), flush=True)
+if args.max_frames <= 0 or args.max_frames >= hi_f - lo_f:
+    idxs = list(range(lo_f, hi_f))
+else:
+    idxs = np.linspace(lo_f, hi_f - 1, args.max_frames).astype(int).tolist()
+print("recorded", N, "-> frames", len(idxs), "-> %.1fs at %dfps" % (len(idxs) / args.fps, args.fps), flush=True)
 proc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{CW}x{CH}",
-                         "-r", "25", "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "6000k",
+                         "-r", str(args.fps), "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "6000k",
                          args.output], stdin=subprocess.PIPE)
 vpr = cnt[:, 1]; dn = cnt[:, 2] + cnt[:, 3]
 
@@ -159,7 +164,7 @@ for k, t in enumerate(idxs):
     draw_fly(dr, 190, 372, 30, 0.15 * t, fln[t], BUT[active] if active else None)
     dr.text((12, 12), args.caption, font=fontS, fill=(170, 180, 200))
     dr.text((12, CH - 24), ("holding: " + active.upper()) if active else "holding: -", font=font, fill=(255, 220, 120))
-    dr.text((gx, 14), "Retroid (Arkanoid)  |  level 1  |  ablation: %s" % ablation, font=font, fill=(230, 230, 240))
+    dr.text((gx, 14), "Retroid (Arkanoid)  |  %s  |  ablation: %s" % (args.bar_label, ablation), font=font, fill=(230, 230, 240))
     cv.paste(Image.fromarray(frames[t]).resize((gw, gh), Image.NEAREST), (gx, gy))
     bar(dr, gx, gy + gh + 14, 368, 10, t / N, (120, 220, 140))
     dr.text((gx, gy + gh + 28), "%s %.0f%%" % (args.bar_label, 100 * t / N), font=fontS, fill=(120, 220, 140))
@@ -200,4 +205,10 @@ for k, t in enumerate(idxs):
     if k % 300 == 0:
         print("frame", k, "/", len(idxs), "%.1fs" % (time.time() - t0), flush=True)
 proc.stdin.close(); proc.wait()
+if args.audio:
+    tmp = str(Path(args.output).with_suffix(".noaudio.mp4"))
+    Path(args.output).replace(tmp)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-i", args.audio,
+                    "-c:v", "copy", "-c:a", "aac", "-shortest", args.output], check=True)
+    Path(tmp).unlink()
 print("done %.1fs" % (time.time() - t0))

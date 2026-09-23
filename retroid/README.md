@@ -272,6 +272,8 @@ that reaches the paddle costs a life just like a lost ball. The adapter reads th
 shots from the OAM table (tiles **`$23`/`$24`**) and the HUD lives byte at
 **`$C457`**.
 
+![The fly dodging the boss's shots with its escape neurons (DNp01)](media/retroid_boss.gif)
+
 Watching the fly on the boss makes the failure mode plain: **it dies to the
 shots, almost never to the ball.** Every death has the same shape -- the ball is
 high and safe (y ≈ 46-64), the paddle is tracking it, and a shot lands on the
