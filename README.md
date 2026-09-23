@@ -125,4 +125,7 @@ Pipeline references:
 
 `fly-ai/` is the upstream [fly.ai](https://github.com/alextitonis/fly.ai) project
 (MIT). Pokémon is a trademark of Nintendo / Game Freak / Creatures. Retroid is a
-free homebrew Game Boy game by Jonas Fischbach. No ROM is distributed here.
+free homebrew Game Boy game by **Jonas Fischbach** -- thanks to him for making it
+and releasing it for free; his projects are at
+[the-green-screen.com](https://the-green-screen.com/) and the game is on
+[itch.io](https://jonas-fischbach.itch.io/retroid). No ROM is distributed here.

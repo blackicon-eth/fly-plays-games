@@ -16,6 +16,12 @@ end and same readout as the Pokémon Red chapter; only the game adapter is new.
 homebrew **Arkanoid / Breakout** clone for the original Game Boy, by **Jonas
 Fischbach** (2016). A paddle at the bottom bounces a ball into a wall of bricks.
 
+**Thank you, Jonas.** Retroid is entirely his work and he released the ROM for
+free; this chapter only borrows it, and none of it would exist without his game.
+His homebrew Game Boy projects live at
+[the-green-screen.com](https://the-green-screen.com/), and Retroid is a free
+download on [itch.io](https://jonas-fischbach.itch.io/retroid).
+
 It fits the fly far better than Pokémon does:
 
 * **One axis, one decision.** The paddle only moves left/right, which is exactly
@@ -335,8 +341,10 @@ understanding, and that is exactly the line the ethos keeps us on the fly's side
 
 ## Running it
 
-The ROM is free from the author's itch.io page and is **not committed**. Put it at
-`retroid/roms/Retroid.gb` (any filename works via `--rom`).
+The ROM is free from the author, **Jonas Fischbach** -- see his site
+[the-green-screen.com](https://the-green-screen.com/) or the game's
+[itch.io page](https://jonas-fischbach.itch.io/retroid) -- and is **not
+committed**. Put it at `retroid/roms/Retroid.gb` (any filename works via `--rom`).
 
 ```sh
 python retroid/play_live.py --scale 4                  # watch it, with a window
