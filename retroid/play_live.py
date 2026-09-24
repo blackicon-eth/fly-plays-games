@@ -126,6 +126,9 @@ def main() -> None:
                     help="item distance = straight line paddle-item, so a far one looms less")
     ap.add_argument("--vx-gain", type=float, default=0.0,
                     help="add a drive on the side the ball is moving toward (px/frame of vx); 0 = off")
+    ap.add_argument("--paddle-boost", type=float, default=0.0,
+                    help="extra paddle px/frame on top of the game's own movement (0 = stock body); "
+                         "may be fractional (0.1 = one extra px every ~10 frames); a change to the game, not the fly")
     ap.add_argument("--escape", action="store_true",
                     help="dodge the boss's shots: drive the escape neurons (DNp01) with a shot's looming (continuous mode)")
     ap.add_argument("--escape-stake", type=float, default=STAKE_ESCAPE,
@@ -178,6 +181,7 @@ def main() -> None:
               f"item drive = urgency (stake {args.item_stake:g}"
               f"{', diagonal' if args.item_diagonal else ''}), cap {args.cap:g}"
               f"{', vx gain %g' % args.vx_gain if args.vx_gain else ''}"
+              f"{', paddle boost %g px/frame (body change)' % args.paddle_boost if args.paddle_boost else ''}"
               f"{', escape (stake %g, gain %g, ball-safe %g)'
                  % (args.escape_stake, args.escape_gain, args.escape_ball_safe)
                  if args.escape else ''}", flush=True)
@@ -230,7 +234,8 @@ def main() -> None:
         brain_thread.start()
 
     a = RetroidAdapter(rom=args.rom, window="null" if args.headless else "SDL2",
-                       scale=args.scale, sound_volume=args.volume, stage=args.stage)
+                       scale=args.scale, sound_volume=args.volume, stage=args.stage,
+                       paddle_boost=args.paddle_boost)
     # PyBoy's own real-time throttle also sleeps, so it stacks with the per-frame cap
     # below and a "40 fps" run lands near 30. Hand the clock to the limiter alone so
     # `--fps` is the actual frame rate (and the fly gets the time it needs).

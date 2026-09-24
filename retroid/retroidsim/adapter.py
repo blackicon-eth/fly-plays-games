@@ -42,6 +42,13 @@ BOSS_STAGE = 21
 # when one of the boss's shots reaches the paddle, so on stage 21 it is the real
 # score of a run -- the ball-loss counter alone misses the shot deaths.
 LIVES_ADDR = 0xC457
+# WRAM byte the game keeps the paddle's horizontal position in (found by a RAM
+# search: it tracks the paddle centre at corr 0.999, offset by -4). `paddle_boost`
+# adds to it after each frame, in the held direction, to make the paddle move
+# faster -- a change to the game's *body*, not to the fly. Clamped to the play
+# field the game itself uses (paddle centre 20..140, i.e. this byte 16..136).
+PADDLE_X_ADDR = 0xC46B
+PADDLE_X_MIN, PADDLE_X_MAX = 16, 136
 
 BALL_TILE = 0x00
 # Normal paddle ($01-$03: left, middle, right) plus every transformed form seen in
@@ -116,7 +123,7 @@ class RetroidAdapter:
 
     def __init__(self, rom: str | Path = DEFAULT_ROM, scenes_dir: str | Path | None = None,
                  window: str = "null", scale: int = 3, sound_volume: int = 100,
-                 stage: int | None = None):
+                 stage: int | None = None, paddle_boost: float = 0.0):
         self.rom = Path(rom)
         if not self.rom.exists():
             raise FileNotFoundError(f"no ROM at {self.rom}; see README.md")
@@ -124,6 +131,14 @@ class RetroidAdapter:
         # When set, every step rewrites `STAGE_ADDR` so the game cannot advance past
         # this stage -- used to park on the boss (`stage=21`).
         self.stage = None if stage is None else int(stage)
+        # Extra pixels per frame added to the paddle in the held direction, on top of
+        # the game's own movement. May be fractional: the paddle moves in whole pixels,
+        # so `paddle_boost=0.1` adds one pixel roughly every ten frames. A change to
+        # the game's body, so any run using it must say so.
+        self.paddle_boost = float(paddle_boost)
+        self._boost_acc = 0.0
+        self._boost_dir = 0
+        self._held: set[str] = set()
         self.pb = pyboy.PyBoy(str(self.rom), window=window, scale=scale, sound_volume=sound_volume)
         self._ball_hist: deque = deque(maxlen=8)   # recent ball positions, for `ball_live`
 
@@ -202,13 +217,28 @@ class RetroidAdapter:
             if self.stage is not None:
                 self.pb.memory[STAGE_ADDR] = self.stage
             self.pb.tick(1)
+            if self.paddle_boost and self._held:
+                d = (1 if "right" in self._held else 0) - (1 if "left" in self._held else 0)
+                if d != self._boost_dir:
+                    self._boost_acc, self._boost_dir = 0.0, d
+                if d:
+                    self._boost_acc += self.paddle_boost
+                    step = int(self._boost_acc)
+                    if step:
+                        self._boost_acc -= step
+                        v = int(self.pb.memory[PADDLE_X_ADDR]) + d * step
+                        self.pb.memory[PADDLE_X_ADDR] = max(PADDLE_X_MIN, min(PADDLE_X_MAX, v))
             self._ball_hist.append(self.ball())
 
     def hold(self, button: str) -> None:
-        self.pb.button_press(self._check(button))
+        b = self._check(button)
+        self._held.add(b)
+        self.pb.button_press(b)
 
     def release(self, button: str) -> None:
-        self.pb.button_release(self._check(button))
+        b = self._check(button)
+        self._held.discard(b)
+        self.pb.button_release(b)
 
     def press(self, button: str, frames: int = 6) -> None:
         """Hold `button` for `frames` frames, then release."""
